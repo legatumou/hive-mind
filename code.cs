@@ -295,6 +295,7 @@ public class Display
                 for (int n = 0; n < Communication.currentNode.nearbyEntities.Count; n++) {
                     if (n > 10) break;
                     message += " => " + Communication.connectedNodesData[i].nearbyEntities[n].name + "\t";
+                    message += " > Distance: " + Communication.connectedNodesData[i].nearbyEntities[n].distance + "\n";
                 }
             }
         }
@@ -352,8 +353,8 @@ public class NodeData
     public List<DetectedEntity> nearbyEntities { get; set; }
     public List<DetectedEntity> targetEntities { get; set; }
 
-    public double getDistanceFrom(Vector3D pos) {
-        return Math.Round( Vector3D.Distance( pos, myGrid.Me.GetPosition() ), 2 );
+    public double getDistanceFrom(Vector3D pos, Vector3D pos2) {
+        return Math.Round( Vector3D.Distance( pos, pos2 ), 2 );
     }
 
     public void updateNearbyCollision(IMySensorBlock sensor)
@@ -364,9 +365,22 @@ public class NodeData
                 DetectedEntity tmp = new DetectedEntity();
                 tmp.id = entity.EntityId;
                 tmp.name = entity.Name;
-                tmp.distance = this.getDistanceFrom(entity.Position);
+                tmp.distance = this.getDistanceFrom(entity.Position, sensor.GetPosition());
                 tmp.type = entity.Type;
                 this.nearbyEntities.Add(tmp);
+            } else {
+                for (int i = 0; i < this.nearbyEntities.Count; i++) {
+                    DetectedEntity nearEntity = this.nearbyEntities[i];
+                    if (nearEntity.id == entity.EntityId) {
+                        DetectedEntity tmp = new DetectedEntity();
+                        tmp.id = entity.EntityId;
+                        tmp.name = entity.Name;
+                        tmp.distance = this.getDistanceFrom(entity.Position, sensor.GetPosition());
+                        tmp.type = entity.Type;
+                        this.nearbyEntities[i] = tmp;
+                        break;
+                    }
+                }
             }
         } else {
             this.nearbyEntities = new List<DetectedEntity>();
@@ -384,8 +398,10 @@ public class NodeData
         List<IMySensorBlock> sensors = new List<IMySensorBlock>();
         this.myGrid.GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(sensors, c => c.BlockDefinition.ToString().ToLower().Contains("sensor"));
         foreach (IMySensorBlock sensor in sensors) {
-            this.updateNearbyCollision(sensor);
-            //this.getTarget(sensor);
+            if (sensor.CustomName.Contains("[Drone]")) {
+                this.updateNearbyCollision(sensor);
+                //this.getTarget(sensor);
+            }
         }
     }
 }
@@ -401,7 +417,7 @@ public class MiningDrone : NodeData
             this.myGrid.Echo("Found entity: " + entity.Name);
             DetectedEntity tmp = new DetectedEntity();
             tmp.id = entity.EntityId;
-            tmp.distance = this.getDistanceFrom(entity.Position);
+            tmp.distance = this.getDistanceFrom(entity.Position, sensor.GetPosition());
             tmp.name = entity.Name;
             tmp.type = entity.Type;
             this.targetEntities.Add(tmp);
@@ -422,7 +438,7 @@ public class CombatDrone : NodeData
             this.myGrid.Echo("Found entity: " + entity.Name);
             DetectedEntity tmp = new DetectedEntity();
             tmp.id = entity.EntityId;
-            tmp.distance = this.getDistanceFrom(entity.Position);
+            tmp.distance = this.getDistanceFrom(entity.Position, sensor.GetPosition());
             tmp.name = entity.Name;
             tmp.type = entity.Type;
             this.targetEntities.Add(tmp);
