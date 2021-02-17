@@ -19,6 +19,7 @@ public void Save()
 
 public void Main()
 {
+    Communication.currentNode.execute();
     Display.print("");
     handleListeners();
     handleKeepalives();
@@ -30,11 +31,15 @@ public void Main()
 
 public Program()
 {
+    // @TODO, Validations to make sure all blocks are connected.
     nodeId = generateRandomId();
     Display.myGrid = this;
     Display.fetchOutputDevices();
+    Navigation navHandle = new Navigation(this);
+    navHandle.updateRemoteControls();
     Communication.currentNode = new MiningDrone(nodeId);
     Communication.currentNode.type = "mining";
+    Communication.currentNode.setNavigation(navHandle);
     coreBlock = (IMyProgrammableBlock) GridTerminalSystem.GetBlockWithName("[Drone] Core");
     LCDPanel = GridTerminalSystem.GetBlockWithName("[Drone] LCD") as IMyTextPanel;
     if (LCDPanel != null) {
@@ -273,13 +278,12 @@ public class Display
         message += "=== Drone Overview (ID: " + Communication.currentNode.id + ") ===\n";
         message += "Battery: " + Math.Round(Communication.currentNode.battery) + "% (" + vBatteries.Count + " batteries found)\n";
         message += "Speed: " + Math.Round((Communication.currentNode.speed / 100), 3) + "\n";
-        message += "Connected: " + Communication.connectedNodes.Count + "\n";
+        message += "Status: " + Communication.currentNode.status + ", Connected: " + Communication.connectedNodes.Count + "\n";
         if (Communication.currentNode.nearbyEntities != null && Communication.currentNode.nearbyEntities.Count() > 0) {
             message += " ==> Nearby entities (" + Communication.currentNode.nearbyEntities.Count() + " found)\n";
             for (int i = 0; i < Communication.currentNode.nearbyEntities.Count; i++) {
                 if (i > 10) break;
-                message += " => " + Communication.currentNode.nearbyEntities[i].name + "\n";
-                message += " > Distance: " + Communication.currentNode.nearbyEntities[i].distance + "\n";
+                message += " => " + Communication.currentNode.nearbyEntities[i].name + " (Distance: " + Communication.currentNode.nearbyEntities[i].distance + ")" + "\n";
             }
         }
         message += msg + "\n";
@@ -294,8 +298,7 @@ public class Display
                 message += " => Nearby entities (" + Communication.connectedNodesData[i].nearbyEntities.Count() + " found)\n";
                 for (int n = 0; n < Communication.currentNode.nearbyEntities.Count; n++) {
                     if (n > 10) break;
-                    message += " => " + Communication.connectedNodesData[i].nearbyEntities[n].name + "\t";
-                    message += " > Distance: " + Communication.connectedNodesData[i].nearbyEntities[n].distance + "\n";
+                    message += " => " + Communication.connectedNodesData[i].nearbyEntities[n].name + " (Distance: " + Communication.connectedNodesData[i].nearbyEntities[n].distance + ")" + "\n";
                 }
             }
         }
@@ -304,11 +307,39 @@ public class Display
     }
 }
 
+public class Navigation
+{
+    public MyGridProgram myGrid;
+    public List<IMyRemoteControl> remotes { get; set; }
+
+    public Navigation(MyGridProgram myGrid) {
+        this.myGrid = myGrid;
+    }
+
+    public void updateRemoteControls() {
+        this.remotes = new List<IMyRemoteControl>();
+        List<IMyRemoteControl> handles = new List<IMyRemoteControl>();
+        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(handles, c => c.BlockDefinition.ToString().ToLower().Contains("remote"));
+        foreach (IMyRemoteControl handle in handles) {
+            if (handle.CustomName.Contains("[Drone]")) {
+                this.remotes.Add(handle);
+            }
+        }
+    }
+
+    public void move(Vector3D coords, string waypointName) {
+        foreach (IMyRemoteControl remote in this.remotes) {
+            remote.AddWaypoint(coords, waypointName);
+            remote.SetAutoPilotEnabled(true);
+        }
+    }
+}
+
 public class Communication
 {
     public static List<int> connectedNodes = new List<int>();
     public static List<NodeData> connectedNodesData = new List<NodeData>();
-    public static NodeData currentNode;
+    public static MiningDrone currentNode;
 
     public static long getTimestamp() {
         long epochTicks = new DateTime(1970, 1, 1).Ticks;
@@ -326,6 +357,7 @@ public class DetectedEntity
     public long id { get; set; }
     public double distance { get; set; }
     public string name { get; set; }
+    public Vector3D position { get; set; }
     public MyDetectedEntityType type { get; set; }
 }
 
@@ -340,7 +372,6 @@ public class NodeData
         this.status = "init";
         this.keepalive = Communication.getTimestamp();
         this.nearbyEntities = new List<DetectedEntity>();
-        this.targetEntities = new List<DetectedEntity>();
     }
     public MyGridProgram myGrid;
 
@@ -351,10 +382,23 @@ public class NodeData
     public string type { get; set; }
     public string status { get; set; }
     public List<DetectedEntity> nearbyEntities { get; set; }
-    public List<DetectedEntity> targetEntities { get; set; }
+    public Navigation navHandle;
+
+    public void setNavigation(Navigation navHandle) {
+        this.navHandle = navHandle;
+    }
 
     public double getDistanceFrom(Vector3D pos, Vector3D pos2) {
         return Math.Round( Vector3D.Distance( pos, pos2 ), 2 );
+    }
+
+    public Vector3D getShipPosition() {
+        List<IMySensorBlock> sensors = new List<IMySensorBlock>();
+        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(sensors, c => c.BlockDefinition.ToString().ToLower().Contains("sensor"));
+        foreach (IMySensorBlock sensor in sensors) {
+            return sensor.GetPosition();
+        }
+        return new Vector3D();
     }
 
     public void updateNearbyCollision(IMySensorBlock sensor)
@@ -365,6 +409,7 @@ public class NodeData
                 DetectedEntity tmp = new DetectedEntity();
                 tmp.id = entity.EntityId;
                 tmp.name = entity.Name;
+                tmp.position = entity.Position;
                 tmp.distance = this.getDistanceFrom(entity.Position, sensor.GetPosition());
                 tmp.type = entity.Type;
                 this.nearbyEntities.Add(tmp);
@@ -375,6 +420,7 @@ public class NodeData
                         DetectedEntity tmp = new DetectedEntity();
                         tmp.id = entity.EntityId;
                         tmp.name = entity.Name;
+                        tmp.position = entity.Position;
                         tmp.distance = this.getDistanceFrom(entity.Position, sensor.GetPosition());
                         tmp.type = entity.Type;
                         this.nearbyEntities[i] = tmp;
@@ -387,10 +433,11 @@ public class NodeData
         }
     }
 
-    public void getTarget(IMySensorBlock sensor)
-    {
-
+    public Vector3D getTarget() {
+        return new Vector3D();
     }
+
+    public void execute(){}
 
     public void process(MyGridProgram grid)
     {
@@ -400,7 +447,6 @@ public class NodeData
         foreach (IMySensorBlock sensor in sensors) {
             if (sensor.CustomName.Contains("[Drone]")) {
                 this.updateNearbyCollision(sensor);
-                //this.getTarget(sensor);
             }
         }
     }
@@ -410,20 +456,33 @@ public class MiningDrone : NodeData
 {
     public MiningDrone(int id) : base(id) {}
 
-    public void getTarget(IMySensorBlock sensor)
-    {
-        if (!sensor.LastDetectedEntity.IsEmpty()) {
-            MyDetectedEntityInfo entity = sensor.LastDetectedEntity;
-            this.myGrid.Echo("Found entity: " + entity.Name);
-            DetectedEntity tmp = new DetectedEntity();
-            tmp.id = entity.EntityId;
-            tmp.distance = this.getDistanceFrom(entity.Position, sensor.GetPosition());
-            tmp.name = entity.Name;
-            tmp.type = entity.Type;
-            this.targetEntities.Add(tmp);
+    public void execute() {
+        DetectedEntity target = this.getTarget();
+
+        if (target.id > 0) {
+            // Move to closest ore.
+            this.navHandle.move(target.position, "navigate-to-ore");
+            this.status = "target-acquired";
         } else {
-            this.targetEntities = new List<DetectedEntity>();
+            this.status = "target-missing";
         }
+    }
+
+    public DetectedEntity getTarget()
+    {
+        DetectedEntity closest = new DetectedEntity();
+        double closestDistance = 3000;
+        double targetDistance;
+        foreach (DetectedEntity entity in this.nearbyEntities) {
+            // Filter out non asteroids.
+            if (entity.name != "Asteroid") continue;
+            targetDistance = this.getDistanceFrom(this.getShipPosition(), entity.position);
+            if (targetDistance < closestDistance) {
+                closest = entity;
+                closestDistance = targetDistance;
+            }
+        }
+        return closest;
     }
 }
 
@@ -431,19 +490,20 @@ public class CombatDrone : NodeData
 {
     public CombatDrone(int id) : base(id) {}
 
-    public void getTarget(IMySensorBlock sensor)
+    public DetectedEntity getTarget()
     {
-        if (!sensor.LastDetectedEntity.IsEmpty()) {
-            MyDetectedEntityInfo entity = sensor.LastDetectedEntity;
-            this.myGrid.Echo("Found entity: " + entity.Name);
-            DetectedEntity tmp = new DetectedEntity();
-            tmp.id = entity.EntityId;
-            tmp.distance = this.getDistanceFrom(entity.Position, sensor.GetPosition());
-            tmp.name = entity.Name;
-            tmp.type = entity.Type;
-            this.targetEntities.Add(tmp);
-        } else {
-            this.targetEntities = new List<DetectedEntity>();
+        DetectedEntity closest = new DetectedEntity();
+        double closestDistance = 3000;
+        double targetDistance;
+        foreach (DetectedEntity entity in this.nearbyEntities) {
+            // Filter out non asteroids.
+            if (entity.name != "Asteroid") continue;
+            targetDistance = this.getDistanceFrom(this.getShipPosition(), entity.position);
+            if (targetDistance < closestDistance) {
+                closest = entity;
+                closestDistance = targetDistance;
+            }
         }
+        return closest;
     }
 }
