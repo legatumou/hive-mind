@@ -279,6 +279,7 @@ public class Display
             for (int i = 0; i < Communication.currentNode.nearbyEntities.Count; i++) {
                 if (i > 10) break;
                 message += " => " + Communication.currentNode.nearbyEntities[i].name + "\n";
+                message += " > Distance: " + Communication.currentNode.nearbyEntities[i].distance + "\n";
             }
         }
         message += msg + "\n";
@@ -293,7 +294,7 @@ public class Display
                 message += " => Nearby entities (" + Communication.connectedNodesData[i].nearbyEntities.Count() + " found)\n";
                 for (int n = 0; n < Communication.currentNode.nearbyEntities.Count; n++) {
                     if (n > 10) break;
-                    message += " > " + Communication.connectedNodesData[i].nearbyEntities[n].name + "\n";
+                    message += " => " + Communication.connectedNodesData[i].nearbyEntities[n].name + "\t";
                 }
             }
         }
@@ -322,6 +323,7 @@ public class DetectedEntity
     }
 
     public long id { get; set; }
+    public double distance { get; set; }
     public string name { get; set; }
     public MyDetectedEntityType type { get; set; }
 }
@@ -350,6 +352,10 @@ public class NodeData
     public List<DetectedEntity> nearbyEntities { get; set; }
     public List<DetectedEntity> targetEntities { get; set; }
 
+    public double getDistanceFrom(Vector3D pos) {
+        return Math.Round( Vector3D.Distance( pos, myGrid.Me.GetPosition() ), 2 );
+    }
+
     public void updateNearbyCollision(IMySensorBlock sensor)
     {
         if (!sensor.LastDetectedEntity.IsEmpty()) {
@@ -358,6 +364,7 @@ public class NodeData
                 DetectedEntity tmp = new DetectedEntity();
                 tmp.id = entity.EntityId;
                 tmp.name = entity.Name;
+                tmp.distance = this.getDistanceFrom(entity.Position);
                 tmp.type = entity.Type;
                 this.nearbyEntities.Add(tmp);
             }
@@ -394,6 +401,7 @@ public class MiningDrone : NodeData
             this.myGrid.Echo("Found entity: " + entity.Name);
             DetectedEntity tmp = new DetectedEntity();
             tmp.id = entity.EntityId;
+            tmp.distance = this.getDistanceFrom(entity.Position);
             tmp.name = entity.Name;
             tmp.type = entity.Type;
             this.targetEntities.Add(tmp);
@@ -414,6 +422,7 @@ public class CombatDrone : NodeData
             this.myGrid.Echo("Found entity: " + entity.Name);
             DetectedEntity tmp = new DetectedEntity();
             tmp.id = entity.EntityId;
+            tmp.distance = this.getDistanceFrom(entity.Position);
             tmp.name = entity.Name;
             tmp.type = entity.Type;
             this.targetEntities.Add(tmp);
