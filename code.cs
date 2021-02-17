@@ -3,7 +3,6 @@ int nodeId;
 long lastPing = 0;
 long lastDataUpdate = 0;
 long lastPositionUpdate = 0;
-NodeData currentNodeData;
 IMyTextPanel LCDPanel;
 IMyProgrammableBlock coreBlock;
 Vector3D lastPosition = new Vector3D(0,0,0);
@@ -20,7 +19,7 @@ public void Save()
 
 public void Main()
 {
-    printMessage("");
+    Display.print("");
     handleListeners();
     handleKeepalives();
     sendPing();
@@ -32,11 +31,15 @@ public void Main()
 public Program()
 {
     nodeId = generateRandomId();
-    currentNodeData = new MiningDrone(nodeId);
-    currentNodeData.type = "mining";
+    Display.myGrid = this;
+    Display.fetchOutputDevices();
+    Communication.currentNode = new MiningDrone(nodeId);
+    Communication.currentNode.type = "mining";
     coreBlock = (IMyProgrammableBlock) GridTerminalSystem.GetBlockWithName("[Drone] Core");
     LCDPanel = GridTerminalSystem.GetBlockWithName("[Drone] LCD") as IMyTextPanel;
-    LCDPanel.CustomData = "" + nodeId;
+    if (LCDPanel != null) {
+        LCDPanel.CustomData = "" + nodeId;
+    }
     Echo("Loading drone, ID: " + nodeId);
     Runtime.UpdateFrequency = UpdateFrequency.Update100;
     setupAntenna();
@@ -45,7 +48,7 @@ public Program()
 
 public void handleCommands()
 {
-    currentNodeData.process(this);
+    Communication.currentNode.process(this);
 }
 
 public void setCustomData(string data)
@@ -55,57 +58,10 @@ public void setCustomData(string data)
     }
 }
 
-public void printMessage(string msg)
-{
-    string message = "";
-    coreBlock = (IMyProgrammableBlock) GridTerminalSystem.GetBlockWithName("[Drone] Core");
-    if (LCDPanel != null && int.Parse(LCDPanel.CustomData) == nodeId) {
-        List<IMyBatteryBlock> vBatteries = new List<IMyBatteryBlock>();
-        GridTerminalSystem.GetBlocksOfType<IMyBatteryBlock>(vBatteries, c => c.BlockDefinition.ToString().ToLower().Contains("battery"));
-        message += "======== Drone Overview (ID: " + nodeId + ") ========\n";
-        message += "Battery: " + Math.Round(currentNodeData.battery) + "% (" + vBatteries.Count + " batteries found)\n";
-        message += "Speed: " + Math.Round(currentNodeData.speed) + "\n";
-        message += "Connected: " + Communication.connectedNodes.Count + "\n";
-        if (currentNodeData.nearbyEntities != null && currentNodeData.nearbyEntities.Count() > 0) {
-            message += " ==> Nearby entities (" + currentNodeData.nearbyEntities.Count() + " found)\n";
-            foreach (DetectedEntity entity in currentNodeData.nearbyEntities) {
-                message += " => " + entity.name + "\n";
-            }
-        }
-        message += msg + "\n";
-        message += "=== Drones connected ===\n";
-
-        for (int i = 0; i < Communication.connectedNodes.Count; i++) {
-            message += " ==> Drone ID: " + Communication.connectedNodes[i] + "\n";
-            message += " => Battery" + Math.Round(Communication.connectedNodesData[i].battery) + "%" + "\n";
-            message += " => Type: " + Communication.connectedNodesData[i].type + "\n";
-            message += " => Status: " + Communication.connectedNodesData[i].status + "\n";
-            if (Communication.connectedNodesData[i].nearbyEntities != null && Communication.connectedNodesData[i].nearbyEntities.Count() > 0) {
-                message += " ==> Nearby entities (" + Communication.connectedNodesData[i].nearbyEntities.Count() + " found)\n";
-                foreach (DetectedEntity entity in Communication.connectedNodesData[i].nearbyEntities) {
-                    message += " => " + entity.name + "\n";
-                }
-            }
-        }
-        LCDPanel.WritePublicText(message, false);
-        message = "";
-    }
-
-    message += "Drone Overview (ID: " + nodeId + ")\n";
-    message += "Connected: " + Communication.connectedNodes.Count + "\n";
-    message += msg + "\n";
-    message += "=== Drones connected ===\n";
-
-    for (int i = 0; i < Communication.connectedNodes.Count; i++) {
-        message += " => Drone ID: " + Communication.connectedNodes[i] + "\n";
-    }
-    Echo(message);
-}
-
 public void sendPing()
 {
     if (lastPing == 0 || Communication.getTimestamp() - lastPing > 15) {
-        printMessage("Pinging...");
+        Display.print("Pinging...");
         broadcastMessage("drone-ping-" + nodeId);
         lastPing = Communication.getTimestamp();
     }
@@ -114,7 +70,7 @@ public void sendPing()
 public void sendNodeData()
 {
     if (lastDataUpdate == 0 || Communication.getTimestamp() - lastDataUpdate > 10) {
-        string[] data = { currentNodeData.battery.ToString("R"), currentNodeData.speed.ToString("R"), currentNodeData.type, currentNodeData.status };
+        string[] data = { Communication.currentNode.battery.ToString("R"), Communication.currentNode.speed.ToString("R"), Communication.currentNode.type, Communication.currentNode.status };
         broadcastMessage("drone-data-" + nodeId + "_" + string.Join("_", data) );
         lastDataUpdate = Communication.getTimestamp();
     }
@@ -182,12 +138,12 @@ public void updateDroneData() {
         maxStorage += getPowerAsInt(getDetailedInfoValue(block, "Max Stored Power"));
         storage += getPowerAsInt(getDetailedInfoValue(block, "Stored power"));
     }
-    currentNodeData.battery = (storage / maxStorage) * 100;
+    Communication.currentNode.battery = (storage / maxStorage) * 100;
 
     if (lastPositionUpdate == 0 || Communication.getTimestamp() - lastPositionUpdate > 0) {
         lastPositionUpdate = Communication.getTimestamp();
         Vector3D currentPosition = Me.GetPosition();
-        currentNodeData.speed = ((currentPosition-lastPosition)*60).Length();
+        Communication.currentNode.speed = ((currentPosition-lastPosition)*60).Length();
         lastPosition = currentPosition;
     }
 }
@@ -247,7 +203,7 @@ public void handleResponsePing(int id)
         Echo("Adding drone: " + id);
         Communication.connectedNodes.Add(id);
         Communication.connectedNodesData.Add(new NodeData(id));
-        printMessage("--> New drone connected: " + id);
+        Display.print("--> New drone connected: " + id);
         Echo("New drone connected: " + id);
     } else {
         Echo("Updating drone: " + id);
@@ -281,10 +237,76 @@ public void setupAntenna()
 
 
 // Classes
+
+public class Display
+{
+    public static List<IMyTextPanel> LCD = new List<IMyTextPanel>();
+    public static List<IMyTextPanel> TextPanels = new List<IMyTextPanel>();
+    public static List<IMyCockpit> Cockpits = new List<IMyCockpit>();
+    public static MyGridProgram myGrid;
+
+    public static void fetchOutputDevices()
+    {
+        Display.myGrid.GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(Display.TextPanels, c => c.BlockDefinition.ToString().ToLower().Contains("text"));
+        Display.myGrid.GridTerminalSystem.GetBlocksOfType<IMyCockpit>(Display.Cockpits, c => c.BlockDefinition.ToString().ToLower().Contains("cockpit"));
+    }
+
+    public static void print(string extraMsg)
+    {
+        string msg = Display.generateMessage(extraMsg);
+
+        // TextPanels
+        foreach (IMyTextPanel panel in Display.TextPanels) {
+            if (panel.CustomName.Contains("[Drone]")) {
+                panel.WriteText(msg, false);
+            }
+        }
+
+        Display.myGrid.Echo(msg);
+    }
+
+    public static string generateMessage(string msg)
+    {
+        string message = "";
+        List<IMyBatteryBlock> vBatteries = new List<IMyBatteryBlock>();
+        Display.myGrid.GridTerminalSystem.GetBlocksOfType<IMyBatteryBlock>(vBatteries, c => c.BlockDefinition.ToString().ToLower().Contains("battery"));
+        message += "=== Drone Overview (ID: " + Communication.currentNode.id + ") ===\n";
+        message += "Battery: " + Math.Round(Communication.currentNode.battery) + "% (" + vBatteries.Count + " batteries found)\n";
+        message += "Speed: " + Math.Round((Communication.currentNode.speed / 100), 3) + "\n";
+        message += "Connected: " + Communication.connectedNodes.Count + "\n";
+        if (Communication.currentNode.nearbyEntities != null && Communication.currentNode.nearbyEntities.Count() > 0) {
+            message += " ==> Nearby entities (" + Communication.currentNode.nearbyEntities.Count() + " found)\n";
+            for (int i = 0; i < Communication.currentNode.nearbyEntities.Count; i++) {
+                if (i > 10) break;
+                message += " => " + Communication.currentNode.nearbyEntities[i].name + "\n";
+            }
+        }
+        message += msg + "\n";
+        message += "=== Drones connected ===\n";
+
+        for (int i = 0; i < Communication.connectedNodes.Count; i++) {
+            message += " ==> Drone ID: " + Communication.connectedNodes[i] + "\n";
+            message += " => Battery" + Math.Round(Communication.connectedNodesData[i].battery) + "%" + "\t";
+            message += " => Type: " + Communication.connectedNodesData[i].type + "\t";
+            message += " => Status: " + Communication.connectedNodesData[i].status + "\n";
+            if (Communication.connectedNodesData[i].nearbyEntities != null && Communication.connectedNodesData[i].nearbyEntities.Count() > 0) {
+                message += " => Nearby entities (" + Communication.connectedNodesData[i].nearbyEntities.Count() + " found)\n";
+                for (int n = 0; n < Communication.currentNode.nearbyEntities.Count; n++) {
+                    if (n > 10) break;
+                    message += " > " + Communication.connectedNodesData[i].nearbyEntities[n].name + "\n";
+                }
+            }
+        }
+
+        return message;
+    }
+}
+
 public class Communication
 {
     public static List<int> connectedNodes = new List<int>();
     public static List<NodeData> connectedNodesData = new List<NodeData>();
+    public static NodeData currentNode;
 
     public static long getTimestamp() {
         long epochTicks = new DateTime(1970, 1, 1).Ticks;
