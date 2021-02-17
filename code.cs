@@ -5,7 +5,6 @@ int nodeId;
 long lastPing = 0;
 long lastDataUpdate = 0;
 long lastPositionUpdate = 0;
-Vector3D lastPosition = new Vector3D(0,0,0);
 NodeData currentNodeData;
 IMyTextPanel LCDPanel;
 IMyProgrammableBlock coreBlock;
@@ -29,12 +28,13 @@ public void Main()
     sendPing();
     sendNodeData();
     updateDroneData();
+    handleCommands();
 }
 
 public Program()
 {
     nodeId = generateRandomId();
-    currentNodeData = new NodeData {id = nodeId, battery = 0, type = "mining", status = "running"};
+    currentNodeData = new MiningDrone {id = nodeId, battery = 0, type = "mining", status = "running"};
     coreBlock = (IMyProgrammableBlock) GridTerminalSystem.GetBlockWithName("[Drone] Core");
     LCDPanel = GridTerminalSystem.GetBlockWithName("[Drone] LCD") as IMyTextPanel;
     LCDPanel.CustomData = "" + nodeId;
@@ -42,6 +42,11 @@ public Program()
     Runtime.UpdateFrequency = UpdateFrequency.Update100;
     setupAntenna();
     setCustomData("drone-id-" + nodeId);
+}
+
+public void handleCommands()
+{
+    currentNodeData.process();
 }
 
 public void setCustomData(string data)
@@ -66,7 +71,14 @@ public void printMessage(string msg)
         message += "=== Drones connected ===\n";
 
         for (int i = 0; i < connectedNodes.Count; i++) {
-            message += " => Drone ID: " + connectedNodes[i] + " (" + Math.Round(connectedNodesData[i].battery) + "% Battery), Type: " + connectedNodesData[i].type + ", Status: " + connectedNodesData[i].status + "\n";
+            message += " ==> Drone ID: " + connectedNodes[i] + "\n";
+            message += " => Battery" Math.Round(connectedNodesData[i].battery) + "%";
+            message += " => Type: " + connectedNodesData[i].type;
+            message += " => Status: " + connectedNodesData[i].status + "\n";
+            message += " ==> Nearby entities\n";
+            foreach (Entity entity in connectedNodesData[i].nearbyEntities) {
+                message += " => " + entity.name + " / " + entity.type + "\n";
+            }
         }
         LCDPanel.WritePublicText(message, false);
         message = "";
@@ -179,17 +191,6 @@ public void updateDroneData() {
     }
 }
 
-public void getTarget(IMySensorBlock sensor)
-{
-    var entity = sensor.LastDetectedEntity;
-    if (entity != null) {
-        var position = sensor.LastDetectedEntity.GetPosition();
-        // do stuff
-    } else {
-        
-    }
-}
-
 public int getNodeIndexById(int id)
 {
     for (int i = 0; i < connectedNodes.Count; i++) {
@@ -276,8 +277,14 @@ public void setupAntenna()
 
 
 // Classes
+public class Entity
+{
+    public int id { get; set; }
+    public string name { get; set; }
+    public string type { get; set; }
+}
 
-class NodeData
+public class NodeData
 {
     public int id { get; set; }
     public long keepalive { get; set; }
@@ -285,5 +292,47 @@ class NodeData
     public double speed { get; set; }
     public string type { get; set; }
     public string status { get; set; }
+    public Entity[] nearbyEntities { get; set; }
+    public Entity[] targetEntities { get; set; }
 
+    public void updateNearbyCollision(IMySensorBlock sensor)
+    {
+        var entity = sensor.LastDetectedEntity;
+        if (entity != null) {
+            this.nearbyEntities[entity.EntityId] = new Entity {id = entity.EntityId, name = entity.Name, type = entity.Type};
+            // do stuff
+        }
+    }
+
+    public void process()
+    {
+        List<IMySensorBlock> sensors = new List<IMySensorBlock>();
+        GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(sensors, c => c.BlockDefinition.ToString().ToLower().Contains("sensor"));
+        foreach (IMySensorBlock sensor in sensors) {
+            this.updateNearbyCollision(sensor);
+            this.getTarget(sensor);
+        }
+    }
+}
+
+public class MiningDrone : NodeData
+{
+    public void getTarget(IMySensorBlock sensor)
+    {
+        var entity = sensor.DetectAsteroid;
+        if (entity != null) {
+            this.targetEntities[entity.EntityId] = new Entity {id = entity.EntityId, name = entity.Name, type = entity.Type};
+        }
+    }
+}
+
+public class FightingDrone : NodeData
+{
+    public void getTarget(IMySensorBlock sensor)
+    {
+        var entity = sensor.DetectEnemy;
+        if (entity != null) {
+            this.targetEntities[entity.EntityId] = new Entity {id = entity.EntityId, name = entity.Name, type = entity.Type};
+        }
+    }
 }
