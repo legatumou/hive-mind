@@ -72,7 +72,7 @@ public void printMessage(string msg)
 
         for (int i = 0; i < connectedNodes.Count; i++) {
             message += " ==> Drone ID: " + connectedNodes[i] + "\n";
-            message += " => Battery" Math.Round(connectedNodesData[i].battery) + "%";
+            message += " => Battery" + Math.Round(connectedNodesData[i].battery) + "%";
             message += " => Type: " + connectedNodesData[i].type;
             message += " => Status: " + connectedNodesData[i].status + "\n";
             message += " ==> Nearby entities\n";
