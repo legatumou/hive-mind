@@ -4,11 +4,15 @@ public class CombatDrone : NodeData
     public CombatDrone(int id) : base(id) {}
 
     public void handleIdle() {
-        bool foundFriend = this.findFriends();
+        NodeData targetFriend = this.findFriends();
 
-        if (foundFriend == false) {
+        if (targetFriend.id > 0) {
+            this.status = "running-to-friend";
+            this.navHandle.move(targetFriend.getShipPosition(), "running-to-friend");
+            return true;
+        } else {
             // Find ore
-            this.status = "finding-asteroids";
+            this.status = "finding-friends";
             Vector3D newPos = Communication.coreBlock.GetPosition();
             // Random position
             Random rnd = new Random();
@@ -45,12 +49,13 @@ public class CombatDrone : NodeData
     public DetectedEntity getTarget()
     {
         DetectedEntity closest = new DetectedEntity();
+        string[] targetList = {"SmallGrid", "LargeGrid", "CharacterHuman", "CharacterOther"};
         double closestDistance = 3000;
         double targetDistance;
         this.myGrid.Echo("Nearby entities: " + this.nearbyEntities.Count + "\n");
         foreach (DetectedEntity entity in this.nearbyEntities) {
             // Filter out non asteroids.
-            if (entity.name != "Asteroid") continue;
+            if (targetList.Contains(entity.name)) continue;
             targetDistance = this.getDistanceFrom(this.getShipPosition(), entity.position);
             if (targetDistance < closestDistance) {
                 closest = entity;

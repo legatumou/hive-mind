@@ -14,6 +14,7 @@ public class NodeData
 
     public int id { get; set; }
     public long keepalive { get; set; }
+    public long entityId { get; set; }
     public float battery { get; set; }
     public double speed { get; set; }
     public string type { get; set; }
@@ -40,7 +41,7 @@ public class NodeData
         return new Vector3D();
     }
 
-    public void updateNearbyCollision(IMySensorBlock sensor)
+    public void updateNearbyCollisionData(IMySensorBlock sensor)
     {
         if (!sensor.LastDetectedEntity.IsEmpty()) {
             MyDetectedEntityInfo entity = sensor.LastDetectedEntity;
@@ -85,12 +86,13 @@ public class NodeData
         this.myGrid.GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(sensors, c => c.BlockDefinition.ToString().ToLower().Contains("sensor"));
         foreach (IMySensorBlock sensor in sensors) {
             if (sensor.CustomName.Contains("[Drone]")) {
-                this.updateNearbyCollision(sensor);
+                this.updateNearbyCollisionData(sensor);
+                // @TODO: Handle collision data.
             }
         }
     }
 
-    public bool findFriends() {
+    public NodeData findFriends() {
         // Find a friendly drone.
         double closestDistance = 100000.0;
         double distance;
@@ -104,12 +106,8 @@ public class NodeData
                 closest = node;
             }
         }
-        if (closest.id > 0) {
-            this.status = "running-to-friend";
-            this.navHandle.move(closest.getShipPosition(), "running-to-friend");
-            return true;
-        }
-        return false;
+
+        return closest;
     }
 
     public void startDrills() {

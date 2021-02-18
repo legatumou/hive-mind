@@ -29,7 +29,13 @@ public class Communication
 
     public void sendNodeData() {
         if (this.lastDataUpdate == 0 || Communication.getTimestamp() - this.lastDataUpdate > 10) {
-            string[] data = { Communication.currentNode.battery.ToString("R"), Communication.currentNode.speed.ToString("R"), Communication.currentNode.type, Communication.currentNode.status };
+            string[] data = {
+                Communication.currentNode.battery.ToString("R"),
+                Communication.currentNode.speed.ToString("R"),
+                Communication.currentNode.type,
+                Communication.currentNode.status,
+                this.myGrid.Me.EntityId.ToString("R")
+            };
             this.broadcastMessage("drone-data-" + Communication.currentNode.id + "_" + string.Join("_", data) );
             this.lastDataUpdate = Communication.getTimestamp();
         }
@@ -43,5 +49,70 @@ public class Communication
     public void setupAntenna() {
         string tag1 = "drone-channel";
         this.myGrid.IGC.RegisterBroadcastListener(tag1);
+    }
+
+    public int getNodeIndexById(int id)
+    {
+        for (int i = 0; i < Communication.connectedNodes.Count; i++) {
+            if (Communication.connectedNodes[i] == id) {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    public void handleListeners()
+    {
+        var listens = new List<IMyBroadcastListener>();
+        this.myGrid.IGC.GetBroadcastListeners( listens );
+
+        for( int i=0; i<listens.Count; ++i ) {
+            while( listens[i].HasPendingMessage ) {
+                var msg = listens[i].AcceptMessage();
+                if( msg.Data.ToString().Substring(0, 10) == "drone-ping" ) {
+                    int id = int.Parse(msg.Data.ToString().Substring(11));
+                    this.handleResponsePing(id);
+                } else if ( msg.Data.ToString().Substring(0, 10) == "drone-data" ) {
+                    string data = msg.Data.ToString().Substring(11);
+                    this.handleResponseData(data);
+                }
+            }
+        }
+    }
+
+    public void handleResponseData(string data)
+    {
+        string[] dataSplitted = data.Split('_');
+        if (dataSplitted.Count() >= 2) {
+            int id = int.Parse(dataSplitted[0]);
+            int nodeIndex = this.getNodeIndexById(id);
+            if (nodeIndex == -1) {
+                Communication.connectedNodes.Add(id);
+                Communication.connectedNodesData.Add(new NodeData(id));
+                nodeIndex = this.getNodeIndexById(id);
+            }
+            Communication.connectedNodesData[nodeIndex].battery = float.Parse(dataSplitted[1]); // battery status
+            Communication.connectedNodesData[nodeIndex].battery = float.Parse(dataSplitted[1]); // battery status
+            Communication.connectedNodesData[nodeIndex].speed = float.Parse(dataSplitted[2]); // battery status
+            Communication.connectedNodesData[nodeIndex].type = dataSplitted[3]; // node type
+            Communication.connectedNodesData[nodeIndex].status = dataSplitted[4]; // status
+            Communication.connectedNodesData[nodeIndex].entityId = long.Parse(dataSplitted[5]); // entityId
+        }
+    }
+
+    public void handleResponsePing(int id)
+    {
+        this.myGrid.Echo("Response ping validation: " + id);
+        if (!Communication.connectedNodes.Contains(id)) {
+            this.myGrid.Echo("Adding drone: " + id);
+            Communication.connectedNodes.Add(id);
+            Communication.connectedNodesData.Add(new NodeData(id));
+            Display.print("--> New drone connected: " + id);
+            this.myGrid.Echo("New drone connected: " + id);
+        } else {
+            this.myGrid.Echo("Updating drone: " + id);
+            Communication.connectedNodesData[this.getNodeIndexById(id)].keepalive = Communication.getTimestamp();
+        }
     }
 }

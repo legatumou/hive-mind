@@ -4,9 +4,13 @@ public class ReplicatorDrone : NodeData
     public ReplicatorDrone(int id) : base(id) {}
 
     public void handleIdle() {
-        bool foundFriend = this.findFriends();
+        NodeData targetFriend = this.findFriends();
 
-        if (foundFriend == false) {
+        if (targetFriend.id > 0) {
+            this.status = "running-to-friend";
+            this.navHandle.move(targetFriend.getShipPosition(), "running-to-friend");
+            return true;
+        } else {
             // Find ore
             this.status = "finding-asteroids";
             Vector3D newPos = Communication.coreBlock.GetPosition();

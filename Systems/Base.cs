@@ -68,69 +68,6 @@ public void handleKeepalives()
     }
 }
 
-public int getNodeIndexById(int id)
-{
-    for (int i = 0; i < Communication.connectedNodes.Count; i++) {
-        if (Communication.connectedNodes[i] == id) {
-            return i;
-        }
-    }
-
-    return -1;
-}
-
-public void handleListeners()
-{
-    var listens = new List<IMyBroadcastListener>();
-    IGC.GetBroadcastListeners( listens );
-
-    for( int i=0; i<listens.Count; ++i ) {
-        while( listens[i].HasPendingMessage ) {
-            var msg = listens[i].AcceptMessage();
-            if( msg.Data.ToString().Substring(0, 10) == "drone-ping" ) {
-                int id = int.Parse(msg.Data.ToString().Substring(11));
-                handleResponsePing(id);
-            } else if ( msg.Data.ToString().Substring(0, 10) == "drone-data" ) {
-                string data = msg.Data.ToString().Substring(11);
-                handleResponseData(data);
-            }
-        }
-    }
-}
-
-public void handleResponseData(string data)
-{
-    string[] dataSplitted = data.Split('_');
-    if (dataSplitted.Count() >= 2) {
-        int id = int.Parse(dataSplitted[0]);
-        int nodeIndex = getNodeIndexById(id);
-        if (nodeIndex == -1) {
-            Communication.connectedNodes.Add(id);
-            Communication.connectedNodesData.Add(new NodeData(id));
-            nodeIndex = getNodeIndexById(id);
-        }
-        Communication.connectedNodesData[nodeIndex].battery = float.Parse(dataSplitted[1]); // battery status
-        Communication.connectedNodesData[nodeIndex].speed = float.Parse(dataSplitted[2]); // battery status
-        Communication.connectedNodesData[nodeIndex].type = dataSplitted[3]; // node type
-        Communication.connectedNodesData[nodeIndex].status = dataSplitted[4]; // status
-    }
-}
-
-public void handleResponsePing(int id)
-{
-    Echo("Response ping validation: " + id);
-    if (!Communication.connectedNodes.Contains(id)) {
-        Echo("Adding drone: " + id);
-        Communication.connectedNodes.Add(id);
-        Communication.connectedNodesData.Add(new NodeData(id));
-        Display.print("--> New drone connected: " + id);
-        Echo("New drone connected: " + id);
-    } else {
-        Echo("Updating drone: " + id);
-        Communication.connectedNodesData[getNodeIndexById(id)].keepalive = Communication.getTimestamp();
-    }
-}
-
 public int generateRandomId()
 {
     Random rnd = new Random();
