@@ -39,6 +39,7 @@ public Program()
     Communication.currentNode = new Replicator(nodeId);
     Communication.currentNode.type = "mining";
     Communication.currentNode.setNavigation(navHandle);
+    Communication.currentNode.myGrid = this;
     Communication.coreBlock = (IMyProgrammableBlock) GridTerminalSystem.GetBlockWithName("[Drone] Core");
     LCDPanel = GridTerminalSystem.GetBlockWithName("[Drone] LCD") as IMyTextPanel;
     if (LCDPanel != null) {
@@ -310,6 +311,7 @@ public class Navigation
 {
     public MyGridProgram myGrid;
     public List<IMyRemoteControl> remotes { get; set; }
+    public Vector3D lastWaypoint;
 
     public Navigation(MyGridProgram myGrid) {
         this.myGrid = myGrid;
@@ -326,10 +328,18 @@ public class Navigation
         }
     }
 
+    public void setAutopilotStatus(bool autoPilotStatus) {
+        foreach (IMyRemoteControl remote in this.remotes) {
+            remote.SetAutoPilotEnabled(autoPilotStatus);
+        }
+    }
+
     public void move(Vector3D coords, string waypointName) {
+        this.clearPath();
+        this.lastWaypoint = coords;
         foreach (IMyRemoteControl remote in this.remotes) {
             remote.AddWaypoint(coords, waypointName);
-            remote.SetAutoPilotEnabled(true); // @TODO Should call this less often.
+            remote.SetAutoPilotEnabled(true);
         }
     }
 
@@ -458,18 +468,68 @@ public class NodeData
             }
         }
     }
+
+    public bool findFriends() {
+        // Find a friendly drone.
+        double closestDistance = 100000.0;
+        double distance;
+        NodeData closest = new NodeData(0);
+
+        for (int i = 0; i < Communication.connectedNodesData.Count; i++) {
+            NodeData node = Communication.connectedNodesData[i];
+            distance = this.getDistanceFrom(node.getShipPosition(), Communication.coreBlock.GetPosition());
+            if (distance < closestDistance && distance > 50) { // not too close ;)
+                closestDistance = distance;
+                closest = node;
+            }
+        }
+        if (closest.id > 0) {
+            this.status = "running-to-friend";
+            this.navHandle.move(closest.getShipPosition(), "running-to-friend");
+            return true;
+        }
+        return false;
+    }
+
+    public void startDrills() {
+        List<IMyShipDrill> drills = new List<IMyShipDrill>();
+        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyShipDrill>(drills);
+        foreach (IMyShipDrill drill in drills) {
+            drill.Enabled = true;
+        }
+    }
+
+    public void haltDrills() {
+        List<IMyShipDrill> drills = new List<IMyShipDrill>();
+        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyShipDrill>(drills);
+        foreach (IMyShipDrill drill in drills) {
+            drill.Enabled = false;
+        }
+    }
 }
 
 public class Replicator : NodeData
 {
+    long lastIdleCommand = 0;
+
     public Replicator(int id) : base(id) {}
 
     public void handleIdle() {
-        this.navHandle.clearPath();
-        this.status = "finding-ore";
-        Vector3D newPos = Communication.coreBlock.GetPosition();
-        newPos.X += 100;
-        this.navHandle.move(newPos, "cruising");
+        bool foundFriend = this.findFriends();
+        if (this.lastIdleCommand == 0) this.lastIdleCommand = Communication.getTimestamp();
+
+        if (foundFriend == false && (Communication.getTimestamp() - this.lastIdleCommand) > 30) {
+            this.lastIdleCommand = Communication.getTimestamp();
+            // Find ore
+            this.status = "finding-asteroids";
+            Vector3D newPos = Communication.coreBlock.GetPosition();
+            // Random position
+            Random rnd = new Random();
+            newPos.X += (int) rnd.Next(0, 1000);
+            newPos.Y += (int) rnd.Next(0, 1000);
+            newPos.Z += (int) rnd.Next(0, 1000);
+            this.navHandle.move(newPos, "cruising");
+        }
     }
 
     public void execute() {
@@ -477,10 +537,11 @@ public class Replicator : NodeData
 
         if (target.id > 0) {
             // Move to closest ore.
-            this.navHandle.clearPath();
             this.navHandle.move(target.position, "navigate-to-ore");
             this.status = "target-acquired";
+            this.startDrills();
         } else {
+            this.haltDrills();
             this.handleIdle();
         }
     }
@@ -490,6 +551,7 @@ public class Replicator : NodeData
         DetectedEntity closest = new DetectedEntity();
         double closestDistance = 3000;
         double targetDistance;
+        this.myGrid.Echo("Nearby entities: " + this.nearbyEntities.Count + "\n");
         foreach (DetectedEntity entity in this.nearbyEntities) {
             // Filter out non asteroids.
             if (entity.name != "Asteroid") continue;
