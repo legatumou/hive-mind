@@ -516,18 +516,17 @@ public class Replicator : NodeData
 
     public void handleIdle() {
         bool foundFriend = this.findFriends();
-        if (this.lastIdleCommand == 0) this.lastIdleCommand = Communication.getTimestamp();
 
-        if (foundFriend == false && (Communication.getTimestamp() - this.lastIdleCommand) > 30) {
+        if (foundFriend == false && (this.lastIdleCommand == 0 || (Communication.getTimestamp() - this.lastIdleCommand) > 60)) {
             this.lastIdleCommand = Communication.getTimestamp();
             // Find ore
             this.status = "finding-asteroids";
             Vector3D newPos = Communication.coreBlock.GetPosition();
             // Random position
             Random rnd = new Random();
-            newPos.X += (int) rnd.Next(0, 1000);
-            newPos.Y += (int) rnd.Next(0, 1000);
-            newPos.Z += (int) rnd.Next(0, 1000);
+            newPos.X += (int) rnd.Next(0, 10000);
+            newPos.Y += (int) rnd.Next(0, 10000);
+            newPos.Z += (int) rnd.Next(0, 10000);
             this.navHandle.move(newPos, "cruising");
         }
     }
