@@ -31,7 +31,7 @@ public class Display
         string message = "";
         List<IMyBatteryBlock> vBatteries = new List<IMyBatteryBlock>();
         Display.myGrid.GridTerminalSystem.GetBlocksOfType<IMyBatteryBlock>(vBatteries, c => c.BlockDefinition.ToString().ToLower().Contains("battery"));
-        message += "=== Drone Overview (ID: " + Communication.currentNode.id + ") ===\n";
+        message += "=== Drone Overview (ID: " + Communication.currentNode.id + " " + Communication.currentNode.type + ") ===\n";
         message += "Battery: " + Math.Round(Communication.currentNode.battery) + "% (" + vBatteries.Count + " batteries found)\n";
         message += "Speed: " + Math.Round((Communication.currentNode.speed / 100), 3) + " | ";
         message += "Space used: " + Communication.currentNode.usedInventorySpace + "%\n";

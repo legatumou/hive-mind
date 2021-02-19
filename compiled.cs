@@ -12,7 +12,7 @@ public class CombatDrone : NodeData
         } else {
             // Find allies
             this.status = "finding-friends";
-            Vector3D newPos = Communication.coreBlock.GetPosition();
+            Vector3D newPos = Core.coreBlock.GetPosition();
             // Random position
             Random rnd = new Random();
             newPos.X += (int) rnd.Next(-10000, 10000);
@@ -51,7 +51,6 @@ public class CombatDrone : NodeData
         string[] targetList = {"SmallGrid", "LargeGrid", "CharacterHuman", "CharacterOther"};
         double closestDistance = 3000;
         double targetDistance;
-        this.myGrid.Echo("Nearby entities: " + this.navHandle.nearbyEntities.Count + "\n");
         foreach (DetectedEntity entity in this.navHandle.nearbyEntities) {
             // Filter out non asteroids.
             if (!targetList.Any(entity.name.Contains)) continue;
@@ -78,7 +77,7 @@ public class DrillingDrone : NodeData
         } else {
             // Find ore
             this.status = "finding-ore";
-            Vector3D newPos = Communication.coreBlock.GetPosition();
+            Vector3D newPos = Core.coreBlock.GetPosition();
             // Random position
             Random rnd = new Random();
             newPos.X += (int) rnd.Next(-10000, 10000);
@@ -89,32 +88,36 @@ public class DrillingDrone : NodeData
     }
 
     public void execute() {
-        if (this.usedInventorySpace < 95) {
+        if (this.usedInventorySpace < 95 || 1 == 1) { // @Lack of features
             DetectedEntity target = this.getTarget();
 
             if (target.id > 0) {
+
+                // @BUG: Keeps moving out of sensor range...
                 // Move to closest ore.
                 Vector3D targetPos = target.position;
+                if ((double) target.entityInfo.BoundingBox.Min.X != 0) {
 
-                // Add some random movement.
-                Random rnd = new Random();
-                targetPos.X += (int) rnd.Next((int) target.entityInfo.BoundingBox.Min.X, (int) target.entityInfo.BoundingBox.Max.X);
-                targetPos.Y += (int) rnd.Next((int) target.entityInfo.BoundingBox.Min.Y, (int) target.entityInfo.BoundingBox.Max.Y);
-                targetPos.Z += (int) rnd.Next((int) target.entityInfo.BoundingBox.Min.Z, (int) target.entityInfo.BoundingBox.Max.Z);
-
+                    this.status = "target-acquired-box";
+                    // Add some random movement.
+                    Random rnd = new Random();
+                    targetPos.X = (double) rnd.Next((int) target.entityInfo.BoundingBox.Min.X, (int) target.entityInfo.BoundingBox.Max.X);
+                    targetPos.Y = (double) rnd.Next((int) target.entityInfo.BoundingBox.Min.Y, (int) target.entityInfo.BoundingBox.Max.Y);
+                    targetPos.Z = (double) rnd.Next((int) target.entityInfo.BoundingBox.Min.Z, (int) target.entityInfo.BoundingBox.Max.Z);
+                }
                 // Execute movement
                 this.navHandle.move(targetPos, "navigate-to-ore");
-                this.status = "target-acquired";
+                this.status = "target-acquired-exact";
                 this.startDrills();
             } else {
                 this.haltDrills();
                 this.handleIdle();
             }
         } else {
-            // @TODO: Find home base.
             this.status = "idle";
             this.haltDrills();
             this.navHandle.clearPath();
+            // @TODO: add Find home base feature.
         }
     }
 
@@ -124,7 +127,6 @@ public class DrillingDrone : NodeData
         string[] targetList = {"Asteroid"};
         double closestDistance = 999999;
         double targetDistance;
-        this.myGrid.Echo("Nearby entities: " + this.navHandle.nearbyEntities.Count + "\n");
         foreach (DetectedEntity entity in this.navHandle.nearbyEntities) {
             // Filter out non asteroids.
             if (!targetList.Any(entity.name.Contains)) continue;
@@ -150,21 +152,51 @@ public class NodeData
     public string status { get; set; }
     public int usedInventorySpace { get; set; }
     public Navigation navHandle;
+    public Core coreHandle;
 
     public NodeData(int id)
     {
         this.id = id;
         this.battery = 0;
         this.speed = 0.0;
-        this.type = "N/A";
+        this.type = "...";
         this.status = "init";
         this.keepalive = Communication.getTimestamp();
+    }
+
+    public void updateDroneType() {
+        if (Core.coreBlock != null) {
+            string customData = Core.coreBlock.CustomData;
+            this.type = customData; // @TODO: Proper custom data handling required.
+        } else {
+            this.type = "N/A";
+        }
+    }
+
+    public static DrillingDrone getDroneClass(int nodeId) {
+        return new DrillingDrone(nodeId); // @TODO: Fix this.
+        /*
+        DrillingDrone nodeClass;
+        string type = NodeData.getDroneType();
+        if (type == "mining") {
+            nodeClass = new DrillingDrone(nodeId);
+        } else if (type == "combat") {
+            nodeClass = new CombatDrone(nodeId);
+        } else {
+            nodeClass = new ReplicatorDrone(nodeId);
+        }
+
+        return nodeClass;*/
     }
 
     public void initNavigation(MyGridProgram myGrid) {
         this.myGrid = myGrid;
         this.navHandle = new Navigation(myGrid);
         this.navHandle.updateRemoteControls();
+    }
+
+    public void setCoreHandle(Core core) {
+        this.coreHandle = core;
     }
 
     public int getInventoryUsedSpacePercentage() {
@@ -220,7 +252,9 @@ public class NodeData
         return new Vector3D();
     }
 
-    public void execute(){}
+    public void execute() {
+        this.myGrid.Echo("Unknown drone type.\n");
+    }
 
     public void process(MyGridProgram grid)
     {
@@ -243,7 +277,7 @@ public class NodeData
 
         for (int i = 0; i < Communication.connectedNodesData.Count; i++) {
             NodeData node = Communication.connectedNodesData[i];
-            distance = this.navHandle.getDistanceFrom(node.getShipPosition(), Communication.coreBlock.GetPosition());
+            distance = this.navHandle.getDistanceFrom(node.getShipPosition(), Core.coreBlock.GetPosition());
             if (distance < closestDistance && distance > 50) { // not too close ;)
                 closestDistance = distance;
                 closest = node;
@@ -295,7 +329,7 @@ public class ReplicatorDrone : NodeData
         }*/
     }
 }
-
+bool runMainLoop = false;
 int nodeId;
 IMyTextPanel LCDPanel;
 Communication commHandle;
@@ -313,42 +347,56 @@ public void Save()
 
 public void Main()
 {
-    Display.print("");
-    commHandle.handleListeners();
-    commHandle.handleKeepalives();
-    coreHandle.updateDroneData();
-    commHandle.sendPing();
-    commHandle.sendNodeData();
-    coreHandle.execute();
+    if (runMainLoop == true) {
+        Display.print("");
+        commHandle.handleListeners();
+        commHandle.handleKeepalives();
+        coreHandle.updateDroneData();
+        commHandle.sendPing();
+        commHandle.sendNodeData();
+        coreHandle.execute();
+    }
 }
 
 public Program()
 {
-    // @TODO, Validations to make sure all blocks are connected.
     nodeId = generateRandomId();
+    Echo("Loading drone, ID: " + nodeId);
     Display.myGrid = this;
     Display.fetchOutputDevices();
     commHandle = new Communication(this);
-    coreHandle = new Core(this);
-    Communication.currentNode = new DrillingDrone(nodeId);
-    Communication.currentNode.type = "mining";
-    Communication.currentNode.initNavigation(this);
-    Communication.coreBlock = (IMyProgrammableBlock) GridTerminalSystem.GetBlockWithName("[Drone] Core");
+    initCore(nodeId);
     LCDPanel = GridTerminalSystem.GetBlockWithName("[Drone] LCD") as IMyTextPanel;
     if (LCDPanel != null) {
         LCDPanel.CustomData = "" + nodeId;
     }
-    Echo("Loading drone, ID: " + nodeId);
     Runtime.UpdateFrequency = UpdateFrequency.Update100;
     commHandle.setupAntenna();
-    setCustomData("drone-id-" + nodeId);
+
+    if (this.validation()) {
+        Display.print("Systems online.");
+        runMainLoop = true;
+    } else {
+        Display.print("[Drone] Core is missing!");
+    }
 }
 
-public void setCustomData(string data)
-{
-    if (Communication.coreBlock != null) {
-        Communication.coreBlock.CustomData = data;
+public void initCore(int nodeId) {
+    coreHandle = new Core(this);
+    Communication.currentNode = NodeData.getDroneClass(nodeId);
+    Communication.currentNode.initNavigation(this);
+    Communication.currentNode.setCoreHandle(coreHandle);
+    coreHandle.setCoreBlock();
+    Communication.currentNode.updateDroneType();
+}
+
+public bool validation() {
+    if (
+        Core.coreBlock == null
+    ) {
+        return false;
     }
+    return true;
 }
 
 public int generateRandomId()
@@ -361,7 +409,6 @@ public class Communication
     public static List<int> connectedNodes = new List<int>();
     public static List<NodeData> connectedNodesData = new List<NodeData>();
     public static DrillingDrone currentNode;
-    public static IMyProgrammableBlock coreBlock;
 
 
     private long lastPing = 0;
@@ -494,6 +541,7 @@ public class Core
     private long lastPositionUpdate = 0;
     private Vector3D lastPosition = new Vector3D(0,0,0);
     private MyGridProgram myGrid;
+    public static IMyProgrammableBlock coreBlock;
 
     public Core(MyGridProgram myGrid) {
         this.myGrid = myGrid;
@@ -503,6 +551,13 @@ public class Core
         Communication.currentNode.process(this.myGrid);
         Communication.currentNode.execute();
     }
+
+    public void setCoreBlock() {
+        Core.coreBlock = (IMyProgrammableBlock) this.myGrid.GridTerminalSystem.GetBlockWithName("[Drone] Core");
+    }
+
+
+    // @TODO: Move bottom methods.
 
     public void updateDroneData() {
         List<IMyBatteryBlock> vBatteries = new List<IMyBatteryBlock>();
@@ -611,7 +666,7 @@ public class Display
         string message = "";
         List<IMyBatteryBlock> vBatteries = new List<IMyBatteryBlock>();
         Display.myGrid.GridTerminalSystem.GetBlocksOfType<IMyBatteryBlock>(vBatteries, c => c.BlockDefinition.ToString().ToLower().Contains("battery"));
-        message += "=== Drone Overview (ID: " + Communication.currentNode.id + ") ===\n";
+        message += "=== Drone Overview (ID: " + Communication.currentNode.id + " " + Communication.currentNode.type + ") ===\n";
         message += "Battery: " + Math.Round(Communication.currentNode.battery) + "% (" + vBatteries.Count + " batteries found)\n";
         message += "Speed: " + Math.Round((Communication.currentNode.speed / 100), 3) + " | ";
         message += "Space used: " + Communication.currentNode.usedInventorySpace + "%\n";

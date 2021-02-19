@@ -12,7 +12,7 @@ public class CombatDrone : NodeData
         } else {
             // Find allies
             this.status = "finding-friends";
-            Vector3D newPos = Communication.coreBlock.GetPosition();
+            Vector3D newPos = Core.coreBlock.GetPosition();
             // Random position
             Random rnd = new Random();
             newPos.X += (int) rnd.Next(-10000, 10000);
@@ -51,7 +51,6 @@ public class CombatDrone : NodeData
         string[] targetList = {"SmallGrid", "LargeGrid", "CharacterHuman", "CharacterOther"};
         double closestDistance = 3000;
         double targetDistance;
-        this.myGrid.Echo("Nearby entities: " + this.navHandle.nearbyEntities.Count + "\n");
         foreach (DetectedEntity entity in this.navHandle.nearbyEntities) {
             // Filter out non asteroids.
             if (!targetList.Any(entity.name.Contains)) continue;

@@ -12,7 +12,7 @@ public class DrillingDrone : NodeData
         } else {
             // Find ore
             this.status = "finding-ore";
-            Vector3D newPos = Communication.coreBlock.GetPosition();
+            Vector3D newPos = Core.coreBlock.GetPosition();
             // Random position
             Random rnd = new Random();
             newPos.X += (int) rnd.Next(-10000, 10000);
@@ -23,32 +23,36 @@ public class DrillingDrone : NodeData
     }
 
     public void execute() {
-        if (this.usedInventorySpace < 95) {
+        if (this.usedInventorySpace < 95 || 1 == 1) { // @Lack of features
             DetectedEntity target = this.getTarget();
 
             if (target.id > 0) {
+
+                // @BUG: Keeps moving out of sensor range...
                 // Move to closest ore.
                 Vector3D targetPos = target.position;
+                if ((double) target.entityInfo.BoundingBox.Min.X != 0) {
 
-                // Add some random movement.
-                Random rnd = new Random();
-                targetPos.X += (int) rnd.Next((int) target.entityInfo.BoundingBox.Min.X, (int) target.entityInfo.BoundingBox.Max.X);
-                targetPos.Y += (int) rnd.Next((int) target.entityInfo.BoundingBox.Min.Y, (int) target.entityInfo.BoundingBox.Max.Y);
-                targetPos.Z += (int) rnd.Next((int) target.entityInfo.BoundingBox.Min.Z, (int) target.entityInfo.BoundingBox.Max.Z);
-
+                    this.status = "target-acquired-box";
+                    // Add some random movement.
+                    Random rnd = new Random();
+                    targetPos.X = (double) rnd.Next((int) target.entityInfo.BoundingBox.Min.X, (int) target.entityInfo.BoundingBox.Max.X);
+                    targetPos.Y = (double) rnd.Next((int) target.entityInfo.BoundingBox.Min.Y, (int) target.entityInfo.BoundingBox.Max.Y);
+                    targetPos.Z = (double) rnd.Next((int) target.entityInfo.BoundingBox.Min.Z, (int) target.entityInfo.BoundingBox.Max.Z);
+                }
                 // Execute movement
                 this.navHandle.move(targetPos, "navigate-to-ore");
-                this.status = "target-acquired";
+                this.status = "target-acquired-exact";
                 this.startDrills();
             } else {
                 this.haltDrills();
                 this.handleIdle();
             }
         } else {
-            // @TODO: Find home base.
             this.status = "idle";
             this.haltDrills();
             this.navHandle.clearPath();
+            // @TODO: add Find home base feature.
         }
     }
 
@@ -58,7 +62,6 @@ public class DrillingDrone : NodeData
         string[] targetList = {"Asteroid"};
         double closestDistance = 999999;
         double targetDistance;
-        this.myGrid.Echo("Nearby entities: " + this.navHandle.nearbyEntities.Count + "\n");
         foreach (DetectedEntity entity in this.navHandle.nearbyEntities) {
             // Filter out non asteroids.
             if (!targetList.Any(entity.name.Contains)) continue;

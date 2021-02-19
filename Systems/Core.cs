@@ -3,6 +3,7 @@ public class Core
     private long lastPositionUpdate = 0;
     private Vector3D lastPosition = new Vector3D(0,0,0);
     private MyGridProgram myGrid;
+    public static IMyProgrammableBlock coreBlock;
 
     public Core(MyGridProgram myGrid) {
         this.myGrid = myGrid;
@@ -12,6 +13,13 @@ public class Core
         Communication.currentNode.process(this.myGrid);
         Communication.currentNode.execute();
     }
+
+    public void setCoreBlock() {
+        Core.coreBlock = (IMyProgrammableBlock) this.myGrid.GridTerminalSystem.GetBlockWithName("[Drone] Core");
+    }
+
+
+    // @TODO: Move bottom methods.
 
     public void updateDroneData() {
         List<IMyBatteryBlock> vBatteries = new List<IMyBatteryBlock>();

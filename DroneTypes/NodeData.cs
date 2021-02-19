@@ -11,21 +11,51 @@ public class NodeData
     public string status { get; set; }
     public int usedInventorySpace { get; set; }
     public Navigation navHandle;
+    public Core coreHandle;
 
     public NodeData(int id)
     {
         this.id = id;
         this.battery = 0;
         this.speed = 0.0;
-        this.type = "N/A";
+        this.type = "...";
         this.status = "init";
         this.keepalive = Communication.getTimestamp();
+    }
+
+    public void updateDroneType() {
+        if (Core.coreBlock != null) {
+            string customData = Core.coreBlock.CustomData;
+            this.type = customData; // @TODO: Proper custom data handling required.
+        } else {
+            this.type = "N/A";
+        }
+    }
+
+    public static DrillingDrone getDroneClass(int nodeId) {
+        return new DrillingDrone(nodeId); // @TODO: Fix this.
+        /*
+        DrillingDrone nodeClass;
+        string type = NodeData.getDroneType();
+        if (type == "mining") {
+            nodeClass = new DrillingDrone(nodeId);
+        } else if (type == "combat") {
+            nodeClass = new CombatDrone(nodeId);
+        } else {
+            nodeClass = new ReplicatorDrone(nodeId);
+        }
+
+        return nodeClass;*/
     }
 
     public void initNavigation(MyGridProgram myGrid) {
         this.myGrid = myGrid;
         this.navHandle = new Navigation(myGrid);
         this.navHandle.updateRemoteControls();
+    }
+
+    public void setCoreHandle(Core core) {
+        this.coreHandle = core;
     }
 
     public int getInventoryUsedSpacePercentage() {
@@ -81,7 +111,9 @@ public class NodeData
         return new Vector3D();
     }
 
-    public void execute(){}
+    public void execute() {
+        this.myGrid.Echo("Unknown drone type.\n");
+    }
 
     public void process(MyGridProgram grid)
     {
@@ -104,7 +136,7 @@ public class NodeData
 
         for (int i = 0; i < Communication.connectedNodesData.Count; i++) {
             NodeData node = Communication.connectedNodesData[i];
-            distance = this.navHandle.getDistanceFrom(node.getShipPosition(), Communication.coreBlock.GetPosition());
+            distance = this.navHandle.getDistanceFrom(node.getShipPosition(), Core.coreBlock.GetPosition());
             if (distance < closestDistance && distance > 50) { // not too close ;)
                 closestDistance = distance;
                 closest = node;

@@ -3,7 +3,6 @@ public class Communication
     public static List<int> connectedNodes = new List<int>();
     public static List<NodeData> connectedNodesData = new List<NodeData>();
     public static DrillingDrone currentNode;
-    public static IMyProgrammableBlock coreBlock;
 
 
     private long lastPing = 0;
