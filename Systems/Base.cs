@@ -17,8 +17,8 @@ public void Save()
 public void Main()
 {
     Display.print("");
-    handleListeners();
-    handleKeepalives();
+    commHandle.handleListeners();
+    commHandle.handleKeepalives();
     coreHandle.updateDroneData();
     commHandle.sendPing();
     commHandle.sendNodeData();
@@ -33,12 +33,9 @@ public Program()
     Display.fetchOutputDevices();
     commHandle = new Communication(this);
     coreHandle = new Core(this);
-    Navigation navHandle = new Navigation(this);
-    navHandle.updateRemoteControls();
-    Communication.currentNode = new ReplicatorDrone(nodeId);
+    Communication.currentNode = new DrillingDrone(nodeId);
     Communication.currentNode.type = "mining";
-    Communication.currentNode.setNavigation(navHandle);
-    Communication.currentNode.myGrid = this;
+    Communication.currentNode.initNavigation(this);
     Communication.coreBlock = (IMyProgrammableBlock) GridTerminalSystem.GetBlockWithName("[Drone] Core");
     LCDPanel = GridTerminalSystem.GetBlockWithName("[Drone] LCD") as IMyTextPanel;
     if (LCDPanel != null) {
@@ -54,17 +51,6 @@ public void setCustomData(string data)
 {
     if (Communication.coreBlock != null) {
         Communication.coreBlock.CustomData = data;
-    }
-}
-
-public void handleKeepalives()
-{
-    for (int i = 0; i < Communication.connectedNodes.Count; i++) {
-        if (Communication.getTimestamp() - Communication.connectedNodesData[i].keepalive > 30) {
-            // Disconnect if over 30 sec timeout.
-            Communication.connectedNodes.RemoveAt(i);
-            Communication.connectedNodesData.RemoveAt(i);
-        }
     }
 }
 

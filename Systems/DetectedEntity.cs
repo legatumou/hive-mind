@@ -11,4 +11,5 @@ public class DetectedEntity
     public string name { get; set; }
     public Vector3D position { get; set; }
     public MyDetectedEntityType type { get; set; }
+    public MyDetectedEntityInfo entityInfo { get; set; }
 }

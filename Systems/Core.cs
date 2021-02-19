@@ -25,6 +25,7 @@ public class Core
             storage += this.getPowerAsInt(this.getDetailedInfoValue(block, "Stored power"));
         }
         Communication.currentNode.battery = (storage / maxStorage) * 100;
+        Communication.currentNode.usedInventorySpace = Communication.currentNode.getInventoryUsedSpacePercentage();
 
         if (this.lastPositionUpdate == 0 || Communication.getTimestamp() - this.lastPositionUpdate > 0) {
             this.lastPositionUpdate = Communication.getTimestamp();

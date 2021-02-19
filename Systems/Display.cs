@@ -33,28 +33,29 @@ public class Display
         Display.myGrid.GridTerminalSystem.GetBlocksOfType<IMyBatteryBlock>(vBatteries, c => c.BlockDefinition.ToString().ToLower().Contains("battery"));
         message += "=== Drone Overview (ID: " + Communication.currentNode.id + ") ===\n";
         message += "Battery: " + Math.Round(Communication.currentNode.battery) + "% (" + vBatteries.Count + " batteries found)\n";
-        message += "Speed: " + Math.Round((Communication.currentNode.speed / 100), 3) + "\n";
+        message += "Speed: " + Math.Round((Communication.currentNode.speed / 100), 3) + " | ";
+        message += "Space used: " + Communication.currentNode.usedInventorySpace + "%\n";
         message += "Status: " + Communication.currentNode.status + ", Connected: " + Communication.connectedNodes.Count + "\n";
-        if (Communication.currentNode.nearbyEntities != null && Communication.currentNode.nearbyEntities.Count() > 0) {
-            message += " ==> Nearby entities (" + Communication.currentNode.nearbyEntities.Count() + " found)\n";
-            for (int i = 0; i < Communication.currentNode.nearbyEntities.Count; i++) {
+        if (Communication.currentNode.navHandle.nearbyEntities != null && Communication.currentNode.navHandle.nearbyEntities.Count() > 0) {
+            message += " ==> Nearby entities (" + Communication.currentNode.navHandle.nearbyEntities.Count() + " found)\n";
+            for (int i = 0; i < Communication.currentNode.navHandle.nearbyEntities.Count; i++) {
                 if (i > 10) break;
-                message += " => " + Communication.currentNode.nearbyEntities[i].name + " (Distance: " + Communication.currentNode.nearbyEntities[i].distance + ")" + "\n";
+                message += " => " + Communication.currentNode.navHandle.nearbyEntities[i].name + " (Distance: " + Communication.currentNode.navHandle.nearbyEntities[i].distance + ")" + "\n";
             }
         }
         message += msg + "\n";
         message += "=== Drones connected ===\n";
 
-        for (int i = 0; i < Communication.connectedNodes.Count; i++) {
-            message += " ==> Drone ID: " + Communication.connectedNodes[i] + "\n";
+        for (int i = 0; i < Communication.connectedNodesData.Count; i++) {
+            message += " ==> Drone ID: " + Communication.connectedNodesData[i].id + "\n";
             message += " => Battery" + Math.Round(Communication.connectedNodesData[i].battery) + "%" + "\t";
             message += " => Type: " + Communication.connectedNodesData[i].type + "\t";
             message += " => Status: " + Communication.connectedNodesData[i].status + "\n";
-            if (Communication.connectedNodesData[i].nearbyEntities != null && Communication.connectedNodesData[i].nearbyEntities.Count() > 0) {
-                message += " => Nearby entities (" + Communication.connectedNodesData[i].nearbyEntities.Count() + " found)\n";
-                for (int n = 0; n < Communication.currentNode.nearbyEntities.Count; n++) {
-                    if (n > 10) break;
-                    message += " => " + Communication.connectedNodesData[i].nearbyEntities[n].name + " (Distance: " + Communication.connectedNodesData[i].nearbyEntities[n].distance + ")" + "\n";
+            if (Communication.connectedNodesData[i].navHandle.nearbyEntities != null && Communication.connectedNodesData[i].navHandle.nearbyEntities.Count > 0) {
+                message += " => Nearby entities (" + Communication.connectedNodesData[i].navHandle.nearbyEntities.Count + " found)\n";
+                for (int n = 0; n < Communication.currentNode.navHandle.nearbyEntities.Count; n++) {
+                    if (n > 5) break;
+                    message += " => " + Communication.connectedNodesData[i].navHandle.nearbyEntities[n].name + " (Distance: " + Communication.connectedNodesData[i].navHandle.nearbyEntities[n].distance + ")" + "\n";
                 }
             }
         }

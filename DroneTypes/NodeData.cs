@@ -1,15 +1,5 @@
 public class NodeData
 {
-    public NodeData(int id)
-    {
-        this.id = id;
-        this.battery = 0;
-        this.speed = 0.0;
-        this.type = "N/A";
-        this.status = "init";
-        this.keepalive = Communication.getTimestamp();
-        this.nearbyEntities = new List<DetectedEntity>();
-    }
     public MyGridProgram myGrid;
 
     public int id { get; set; }
@@ -19,15 +9,61 @@ public class NodeData
     public double speed { get; set; }
     public string type { get; set; }
     public string status { get; set; }
-    public List<DetectedEntity> nearbyEntities { get; set; }
+    public int usedInventorySpace { get; set; }
     public Navigation navHandle;
 
-    public void setNavigation(Navigation navHandle) {
-        this.navHandle = navHandle;
+    public NodeData(int id)
+    {
+        this.id = id;
+        this.battery = 0;
+        this.speed = 0.0;
+        this.type = "N/A";
+        this.status = "init";
+        this.keepalive = Communication.getTimestamp();
     }
 
-    public double getDistanceFrom(Vector3D pos, Vector3D pos2) {
-        return Math.Round( Vector3D.Distance( pos, pos2 ), 2 );
+    public void initNavigation(MyGridProgram myGrid) {
+        this.myGrid = myGrid;
+        this.navHandle = new Navigation(myGrid);
+        this.navHandle.updateRemoteControls();
+    }
+
+    public int getInventoryUsedSpacePercentage() {
+        List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyCargoContainer>(blocks);
+        IMyInventoryOwner inventoryOwner;
+        IMyInventory containerInventory;
+        double usedVolume = 0;
+        double totalVolume = 0;
+
+        for (int i = 0; i < blocks.Count; i++) {
+            inventoryOwner = (IMyInventoryOwner) blocks[i];
+            containerInventory = inventoryOwner.GetInventory(0);
+            usedVolume += (double) containerInventory.CurrentVolume;
+            totalVolume += (double) containerInventory.MaxVolume;
+        }
+
+        return (int) ((usedVolume/totalVolume) * 100);
+    }
+
+    public List<MyInventoryItem> getInventoryContents() {
+        List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyCargoContainer>(blocks);
+        IMyInventoryOwner inventoryOwner;
+        IMyInventory containerInventory;
+        List<MyInventoryItem> items = new List<MyInventoryItem>();
+        List<MyInventoryItem> returnList = new List<MyInventoryItem>();
+
+        for (int i = 0; i < blocks.Count; i++) {
+            inventoryOwner = (IMyInventoryOwner) blocks[i];
+            containerInventory = inventoryOwner.GetInventory(0);
+            containerInventory.GetItems(items);
+            foreach (MyInventoryItem item in items) {
+                returnList.Add(item);
+            }
+        }
+
+        return returnList;
     }
 
     public Vector3D getShipPosition() {
@@ -39,38 +75,6 @@ public class NodeData
             }
         }
         return new Vector3D();
-    }
-
-    public void updateNearbyCollisionData(IMySensorBlock sensor)
-    {
-        if (!sensor.LastDetectedEntity.IsEmpty()) {
-            MyDetectedEntityInfo entity = sensor.LastDetectedEntity;
-            if (!this.nearbyEntities.Any(val => val.id == entity.EntityId)) {
-                DetectedEntity tmp = new DetectedEntity();
-                tmp.id = entity.EntityId;
-                tmp.name = entity.Name;
-                tmp.position = entity.Position;
-                tmp.distance = this.getDistanceFrom(entity.Position, sensor.GetPosition());
-                tmp.type = entity.Type;
-                this.nearbyEntities.Add(tmp);
-            } else {
-                for (int i = 0; i < this.nearbyEntities.Count; i++) {
-                    DetectedEntity nearEntity = this.nearbyEntities[i];
-                    if (nearEntity.id == entity.EntityId) {
-                        DetectedEntity tmp = new DetectedEntity();
-                        tmp.id = entity.EntityId;
-                        tmp.name = entity.Name;
-                        tmp.position = entity.Position;
-                        tmp.distance = this.getDistanceFrom(entity.Position, sensor.GetPosition());
-                        tmp.type = entity.Type;
-                        this.nearbyEntities[i] = tmp;
-                        break;
-                    }
-                }
-            }
-        } else {
-            this.nearbyEntities = new List<DetectedEntity>();
-        }
     }
 
     public Vector3D getTarget() {
@@ -86,7 +90,7 @@ public class NodeData
         this.myGrid.GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(sensors, c => c.BlockDefinition.ToString().ToLower().Contains("sensor"));
         foreach (IMySensorBlock sensor in sensors) {
             if (sensor.CustomName.Contains("[Drone]")) {
-                this.updateNearbyCollisionData(sensor);
+                this.navHandle.updateNearbyCollisionData(sensor);
                 // @TODO: Handle collision data.
             }
         }
@@ -100,7 +104,7 @@ public class NodeData
 
         for (int i = 0; i < Communication.connectedNodesData.Count; i++) {
             NodeData node = Communication.connectedNodesData[i];
-            distance = this.getDistanceFrom(node.getShipPosition(), Communication.coreBlock.GetPosition());
+            distance = this.navHandle.getDistanceFrom(node.getShipPosition(), Communication.coreBlock.GetPosition());
             if (distance < closestDistance && distance > 50) { // not too close ;)
                 closestDistance = distance;
                 closest = node;

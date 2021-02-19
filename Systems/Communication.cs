@@ -2,7 +2,7 @@ public class Communication
 {
     public static List<int> connectedNodes = new List<int>();
     public static List<NodeData> connectedNodesData = new List<NodeData>();
-    public static ReplicatorDrone currentNode;
+    public static DrillingDrone currentNode;
     public static IMyProgrammableBlock coreBlock;
 
 
@@ -27,6 +27,17 @@ public class Communication
         }
     }
 
+    public void handleKeepalives()
+    {
+        for (int i = 0; i < Communication.connectedNodes.Count; i++) {
+            if (Communication.getTimestamp() - Communication.connectedNodesData[i].keepalive > 30) {
+                // Disconnect if over 30 sec timeout.
+                Communication.connectedNodes.RemoveAt(i);
+                Communication.connectedNodesData.RemoveAt(i);
+            }
+        }
+    }
+
     public void sendNodeData() {
         if (this.lastDataUpdate == 0 || Communication.getTimestamp() - this.lastDataUpdate > 10) {
             string[] data = {
@@ -34,7 +45,7 @@ public class Communication
                 Communication.currentNode.speed.ToString("R"),
                 Communication.currentNode.type,
                 Communication.currentNode.status,
-                this.myGrid.Me.EntityId.ToString("R")
+                /*this.myGrid.Me.EntityId.ToString("R")*/"0"
             };
             this.broadcastMessage("drone-data-" + Communication.currentNode.id + "_" + string.Join("_", data) );
             this.lastDataUpdate = Communication.getTimestamp();
@@ -89,7 +100,9 @@ public class Communication
             int nodeIndex = this.getNodeIndexById(id);
             if (nodeIndex == -1) {
                 Communication.connectedNodes.Add(id);
-                Communication.connectedNodesData.Add(new NodeData(id));
+                NodeData node = new NodeData(id);
+                node.initNavigation(this.myGrid);
+                Communication.connectedNodesData.Add(node);
                 nodeIndex = this.getNodeIndexById(id);
             }
             Communication.connectedNodesData[nodeIndex].battery = float.Parse(dataSplitted[1]); // battery status
@@ -107,7 +120,9 @@ public class Communication
         if (!Communication.connectedNodes.Contains(id)) {
             this.myGrid.Echo("Adding drone: " + id);
             Communication.connectedNodes.Add(id);
-            Communication.connectedNodesData.Add(new NodeData(id));
+            NodeData node = new NodeData(id);
+            node.initNavigation(this.myGrid);
+            Communication.connectedNodesData.Add(node);
             Display.print("--> New drone connected: " + id);
             this.myGrid.Echo("New drone connected: " + id);
         } else {
