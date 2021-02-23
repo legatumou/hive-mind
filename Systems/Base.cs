@@ -17,13 +17,14 @@ public void Save()
 public void Main()
 {
     if (runMainLoop == true) {
-        Display.print("");
         commHandle.handleListeners();
         commHandle.handleKeepalives();
         coreHandle.updateDroneData();
         commHandle.sendPing();
         commHandle.sendNodeData();
+        commHandle.sendNearbyEntityList();
         coreHandle.execute();
+        Display.display();
     }
 }
 
@@ -52,11 +53,13 @@ public Program()
 
 public void initCore(int nodeId) {
     coreHandle = new Core(this);
-    Communication.currentNode = NodeData.getDroneClass(nodeId);
-    Communication.currentNode.initNavigation(this);
+    Communication.currentNode = new Drone(nodeId);
     Communication.currentNode.setCoreHandle(coreHandle);
+    Communication.currentNode.setCommHandle(commHandle);
+    Communication.currentNode.initNavigation(this);
+    Communication.currentNode.navHandle.updateRemoteControls();
     coreHandle.setCoreBlock();
-    Communication.currentNode.updateDroneType();
+    Communication.currentNode.initiate();
 }
 
 public bool validation() {

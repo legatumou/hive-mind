@@ -1,7 +1,7 @@
 
-public class CombatDrone : NodeData
+public class Drone : NodeData
 {
-    public CombatDrone(int id) : base(id) {}
+    public Drone(int id) : base(id) {}
 
     public void handleIdle() {
         NodeData targetFriend = this.findFriends();

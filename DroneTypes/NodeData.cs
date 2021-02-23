@@ -1,6 +1,11 @@
 public class NodeData
 {
     public MyGridProgram myGrid;
+    public Gyro gyroHandle;
+    public Docking dockingHandle;
+    public Navigation navHandle;
+    public Communication commHandle;
+    public Core coreHandle;
 
     public int id { get; set; }
     public long keepalive { get; set; }
@@ -10,52 +15,49 @@ public class NodeData
     public string type { get; set; }
     public string status { get; set; }
     public int usedInventorySpace { get; set; }
-    public Navigation navHandle;
-    public Core coreHandle;
+    public Vector3D position;
+    public Vector3D connectorAnchorTopPosition;
+    public Vector3D connectorAnchorBottomPosition;
+    public List<Vector3D> gyroPosition;
 
     public NodeData(int id)
     {
         this.id = id;
         this.battery = 0;
+        this.usedInventorySpace = 0;
         this.speed = 0.0;
-        this.type = "...";
         this.status = "init";
         this.keepalive = Communication.getTimestamp();
     }
 
-    public void updateDroneType() {
-        if (Core.coreBlock != null) {
-            string customData = Core.coreBlock.CustomData;
-            this.type = customData; // @TODO: Proper custom data handling required.
-        } else {
-            this.type = "N/A";
-        }
-    }
+    public void initiate() {
 
-    public static DrillingDrone getDroneClass(int nodeId) {
-        return new DrillingDrone(nodeId); // @TODO: Fix this.
-        /*
-        DrillingDrone nodeClass;
-        string type = NodeData.getDroneType();
-        if (type == "mining") {
-            nodeClass = new DrillingDrone(nodeId);
-        } else if (type == "combat") {
-            nodeClass = new CombatDrone(nodeId);
-        } else {
-            nodeClass = new ReplicatorDrone(nodeId);
-        }
-
-        return nodeClass;*/
     }
 
     public void initNavigation(MyGridProgram myGrid) {
         this.myGrid = myGrid;
         this.navHandle = new Navigation(myGrid);
-        this.navHandle.updateRemoteControls();
+        this.gyroHandle = new Gyro(myGrid);
+        this.dockingHandle = new Docking(myGrid);
+        this.navHandle.setDockingHandle(this.dockingHandle);
+        this.navHandle.setGyroHandle(this.gyroHandle);
+        this.navHandle.setCommunicationHandle(this.commHandle);
+        this.dockingHandle.setNavHandle(this.navHandle);
+        if (this.isMasterNode()) {
+            this.dockingHandle.amAMaster = true;
+        }
     }
 
     public void setCoreHandle(Core core) {
         this.coreHandle = core;
+    }
+
+    public void setCommHandle(Communication commHandle) {
+        this.commHandle = commHandle;
+    }
+
+    public bool isMasterNode() {
+        return (this.type == "replicator");
     }
 
     public int getInventoryUsedSpacePercentage() {
@@ -96,23 +98,12 @@ public class NodeData
         return returnList;
     }
 
-    public Vector3D getShipPosition() {
-        List<IMySensorBlock> sensors = new List<IMySensorBlock>();
-        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(sensors, c => c.BlockDefinition.ToString().ToLower().Contains("sensor"));
-        foreach (IMySensorBlock sensor in sensors) {
-            if (sensor.CustomName.Contains("[Drone]")) {
-                return sensor.GetPosition();
-            }
-        }
-        return new Vector3D();
-    }
-
     public Vector3D getTarget() {
         return new Vector3D();
     }
 
     public void execute() {
-        this.myGrid.Echo("Unknown drone type.\n");
+        Display.print("[Error] Unknown drone type.\n");
     }
 
     public void process(MyGridProgram grid)
@@ -136,7 +127,7 @@ public class NodeData
 
         for (int i = 0; i < Communication.connectedNodesData.Count; i++) {
             NodeData node = Communication.connectedNodesData[i];
-            distance = this.navHandle.getDistanceFrom(node.getShipPosition(), Core.coreBlock.GetPosition());
+            distance = this.navHandle.getDistanceFrom(node.position, this.navHandle.getShipPosition());
             if (distance < closestDistance && distance > 50) { // not too close ;)
                 closestDistance = distance;
                 closest = node;
@@ -144,21 +135,5 @@ public class NodeData
         }
 
         return closest;
-    }
-
-    public void startDrills() {
-        List<IMyShipDrill> drills = new List<IMyShipDrill>();
-        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyShipDrill>(drills);
-        foreach (IMyShipDrill drill in drills) {
-            drill.Enabled = true;
-        }
-    }
-
-    public void haltDrills() {
-        List<IMyShipDrill> drills = new List<IMyShipDrill>();
-        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyShipDrill>(drills);
-        foreach (IMyShipDrill drill in drills) {
-            drill.Enabled = false;
-        }
     }
 }
