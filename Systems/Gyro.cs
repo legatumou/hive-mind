@@ -5,6 +5,7 @@ public class Gyro
 
     public Gyro(MyGridProgram myGrid) {
         this.myGrid = myGrid;
+        this.disableOverride();
     }
 
     public IMyGyro getFirstGyro() {
@@ -40,13 +41,10 @@ public class Gyro
         List<IMyGyro> blocks = new List<IMyGyro>();
         this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyGyro>(blocks);
         foreach (IMyGyro block in blocks) {
-            if (!block.CustomName.Contains("[Drone]")) continue;
             if (!block.GyroOverride) {
                 block.ApplyAction("Override");
             }
             block.SetValueFloat("Power", 100);
-            //block.SetValueFloat("Yaw", (float) orientation.X);
-            //block.SetValueFloat("Pitch", (float) orientation.Y);
     		block.SetValueFloat("Roll", amount);
         }
     }
@@ -55,7 +53,6 @@ public class Gyro
         List<IMyGyro> blocks = new List<IMyGyro>();
         this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyGyro>(blocks);
         foreach (IMyGyro block in blocks) {
-            if (!block.CustomName.Contains("[Drone]")) continue;
             if (block.GyroOverride) {
                 block.ApplyAction("Override");
             }

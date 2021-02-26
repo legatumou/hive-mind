@@ -10,6 +10,7 @@ public class Navigation
     public Docking dockingHandle;
     public Communication commHandle;
     public Gyro gyroHandle;
+    public DockingProcedure activeDockingProcedure;
 
 
     public Navigation(MyGridProgram myGrid) {
@@ -116,11 +117,12 @@ public class Navigation
     }
 
     public Vector3D getShipPosition() {
-        List<IMySensorBlock> sensors = new List<IMySensorBlock>();
-        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(sensors, c => c.BlockDefinition.ToString().ToLower().Contains("sensor"));
-        foreach (IMySensorBlock sensor in sensors) {
-            if (sensor.CustomName.Contains("[Drone]")) {
-                return sensor.GetPosition();
+
+        List<IMyRemoteControl> remotes = new List<IMyRemoteControl>();
+        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(remotes, c => c.BlockDefinition.ToString().ToLower().Contains("remote"));
+        foreach (IMyRemoteControl remote in remotes) {
+            if (remote.CustomName.Contains("[Drone]")) {
+                return remote.GetPosition();
             }
         }
         return new Vector3D();
@@ -129,34 +131,26 @@ public class Navigation
     public void returnToMaster() {
         if (Communication.masterDrone == null) {
             Communication.currentNode.status = "no-master";
+            this.commHandle.sendMasterRequest();
             return; // Do nothing.
         }
         // Remove overrides
-        this.overrideThruster("Forward", 0);
-        double targetDistance = this.getDistanceFrom(this.getShipPosition(), Communication.masterDrone.position);
-        if (targetDistance > 200) {
-            Communication.currentNode.status = "returning";
-            Vector3D queuePos = this.dockingHandle.getQueuePosition();
-            this.move(queuePos, "returning");
-            this.setCollisionStatus(false);
-        } else {
-            Communication.currentNode.status = "docking-step-unknown";
-            if (Communication.masterDrone.connectorAnchorTopPosition.X != 0) {
-                if (this.dockingHandle.hasDockingPermission == true) {
-                    if (this.dockingHandle.dockingStep == 0) {
-                        this.dockingHandle.handleFinalStep();
-                    } else if (this.dockingHandle.dockingStep == 1) {
-                        this.dockingHandle.handleStepOne();
-                    } else {
-                        this.dockingHandle.handleStepTwo();
-                    }
-                } else {
-                    this.dockingHandle.handleStepQueueing();
-                }
+        Communication.currentNode.status = "docking-step-unknown";
+        if (
+            Communication.masterDrone.connectorAnchorTopPosition != null &&
+            Communication.masterDrone.connectorAnchorBottomPosition != null &&
+            this.activeDockingProcedure != null &&
+            this.activeDockingProcedure.hasDockingPermission == true
+        ) {
+            if (this.activeDockingProcedure.dockingStep == 0) {
+                this.dockingHandle.handleFinalStep(this.activeDockingProcedure);
+            } else if (this.activeDockingProcedure.dockingStep == 1) {
+                this.dockingHandle.handleStepOne(this.activeDockingProcedure);
             } else {
-                this.clearPath();
-                Communication.currentNode.status = "waiting-for-connector";
+                this.dockingHandle.handleStepTwo(this.activeDockingProcedure);
             }
+        } else {
+            this.dockingHandle.handleStepQueueing(this.activeDockingProcedure);
         }
     }
 

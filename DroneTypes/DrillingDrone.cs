@@ -12,30 +12,15 @@ public class Drone : NodeData
     public void execute() {
         if (this.lastLoopTime == 0 || Communication.getTimestamp() - this.lastLoopTime > 3) { // 3 Sec thinking intervals
             bool result;
-            result = this.handleMaster();
-            if (result == true) return;
+            result = this.hasMaster();
+            if (result != true) return;
             this.dockingHandle.handleDockingProcedure();
             this.mainLogic();
             this.lastLoopTime = Communication.getTimestamp();
 
             this.navHandle.setDirection("Forward"); // @TODO: Should make a method that handles all the hardware in one place.
         }
-
-        this.dockingHandle.handleLockingMechanism();
-    }
-
-    public bool handleMaster() {
-        if (Communication.masterDrone == null) {
-            this.status = "requesting-master";
-            this.commHandle.sendMasterRequest();
-            this.navHandle.clearPath();
-            return true;
-        } else {
-            if (this.status == "requesting-master") {
-                this.status = "master-accepted";
-            }
-        }
-        return false;
+        this.dockingHandle.handleDockingMechanism();
     }
 
     public void handleIdle() {
@@ -56,7 +41,7 @@ public class Drone : NodeData
     }
 
     public void mainLogic() {
-        if (this.usedInventorySpace < 95 && this.dockingHandle.dockingInProgress == false) {
+        if (this.usedInventorySpace < 95 && this.navHandle.activeDockingProcedure == null) {
             this.navHandle.setCollisionStatus(false);
             DetectedEntity target = this.getTarget();
 
@@ -94,10 +79,10 @@ public class Drone : NodeData
                 this.handleIdle();
             }
         } else {
-            if (this.dockingHandle.dockingStep > 1) {
-                this.startDrills();
-            } else {
+            if (this.navHandle.activeDockingProcedure != null && this.navHandle.activeDockingProcedure.dockingStep <= 2) {
                 this.haltDrills();
+            } else {
+                this.startDrills();
             }
             this.navHandle.returnToMaster();
         }

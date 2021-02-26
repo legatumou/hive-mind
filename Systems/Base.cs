@@ -59,6 +59,9 @@ public void initCore(int nodeId) {
     Communication.currentNode.initNavigation(this);
     Communication.currentNode.navHandle.updateRemoteControls();
     coreHandle.setCoreBlock();
+    Anchor.initAnchors(this);
+    Piston.initPistons(this);
+    AnchoredConnector.initConnectors(this);
     Communication.currentNode.initiate();
 }
 

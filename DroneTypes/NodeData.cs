@@ -19,6 +19,9 @@ public class NodeData
     public Vector3D connectorAnchorTopPosition;
     public Vector3D connectorAnchorBottomPosition;
     public List<Vector3D> gyroPosition;
+    public int masterConnectorId { get; set; }
+    public int creatorId = 0;
+    public bool movingFromCreator = false;
 
     public NodeData(int id)
     {
@@ -30,8 +33,11 @@ public class NodeData
         this.keepalive = Communication.getTimestamp();
     }
 
-    public void initiate() {
+    public void initiate() {}
 
+    public void moveAwayFromCreator(int id) {
+        this.movingFromCreator = true;
+        this.creatorId = id;
     }
 
     public void initNavigation(MyGridProgram myGrid) {
@@ -48,6 +54,19 @@ public class NodeData
         }
     }
 
+    public bool hasMaster() {
+        if (Communication.masterDrone == null) {
+            this.status = "requesting-master";
+            this.commHandle.sendMasterRequest();
+            this.navHandle.clearPath();
+            return false;
+        }
+        if (this.status == "requesting-master") {
+            this.status = "master-accepted";
+        }
+        return true;
+    }
+
     public void setCoreHandle(Core core) {
         this.coreHandle = core;
     }
@@ -58,6 +77,18 @@ public class NodeData
 
     public bool isMasterNode() {
         return (this.type == "replicator");
+    }
+
+    public void turnOnDrones() {
+        List<IMyProgrammableBlock> blocks = new List<IMyProgrammableBlock>();
+        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyProgrammableBlock>(blocks);
+        foreach (IMyProgrammableBlock block in blocks) {
+            if (block.CustomName.Contains("[Drone]")) {
+                if (block.Enabled == false) {
+                    block.Enabled = true;
+                }
+            }
+        }
     }
 
     public int getInventoryUsedSpacePercentage() {
@@ -112,7 +143,7 @@ public class NodeData
         List<IMySensorBlock> sensors = new List<IMySensorBlock>();
         this.myGrid.GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(sensors, c => c.BlockDefinition.ToString().ToLower().Contains("sensor"));
         foreach (IMySensorBlock sensor in sensors) {
-            if (sensor.CustomName.Contains("[Drone]")) {
+            if (sensor.CustomName.Contains("[Drone]") && !sensor.CustomName.Contains("[Anchor]")) {
                 this.navHandle.updateNearbyCollisionData(sensor);
                 // @TODO: Handle collision data.
             }

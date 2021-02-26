@@ -7,6 +7,7 @@ public class Display
     public static MyGridProgram myGrid;
     public static List<string> printQueue = new List<string>();
     public static List<string> debugPrintQueue = new List<string>();
+    public static List<string> dockingPrintQueue = new List<string>();
     public static long lastDisplayRefresh = 0;
 
     public static bool debug = true; // @TODO: Should be some kind of config or some shit.
@@ -32,8 +33,17 @@ public class Display
             string msg = Display.generateMessage(string.Join("\n", Display.printQueue));
             // TextPanels
             foreach (IMyTextPanel panel in Display.TextPanels) {
-                if (panel.CustomName.Contains("[Drone]") && !panel.CustomName.Contains("[Debug]")) {
+                if (panel.CustomName.Contains("[Drone]") && !panel.CustomName.Contains("[Debug]") && !panel.CustomName.Contains("[Docking]")) {
                     panel.WriteText(msg, false);
+                }
+            }
+
+            // Docking panel
+            string dockingMsg = Display.generateDockingMessage(string.Join("\n", Display.dockingPrintQueue));
+            // TextPanels
+            foreach (IMyTextPanel panel in Display.TextPanels) {
+                if (panel.CustomName.Contains("[Drone]") && panel.CustomName.Contains("[Docking]")) {
+                    panel.WriteText(dockingMsg, false);
                 }
             }
 
@@ -56,9 +66,30 @@ public class Display
         }
     }
 
+    public static string generateDockingMessage(string msg) {
+        string message = "";
+        message += "=== Docking info ===\n";
+        message += "Anchored connectors: " + AnchoredConnector.anchoredConnectors.Count + "\n";
+        foreach (AnchoredConnector connector in AnchoredConnector.anchoredConnectors) {
+            message += "--> Connector \t";
+            if (connector.connectorId != null) {
+                message += "-> ID: " + connector.connectorId + "\t";
+            }
+            if (connector.inUse == true) {
+                message += "-> Docking in progress\t";
+            }
+            message += "-> Connector isAnchored: " + connector.isAnchored + "\n";
+        }
+        message += "------------------\n";
+        message += msg + "\n";
+
+        return message;
+    }
+
     public static string generateDebugMessage(string msg) {
         string message = "";
         message += "=== DEBUG DATA ===\n";
+        message += "------------------\n";
         message += msg + "\n";
 
         return message;
@@ -77,16 +108,11 @@ public class Display
         } else {
             message += "Space used: " + myDrone.usedInventorySpace + "%\n";
             if (Communication.masterDrone != null) {
-                message += "MasterID: " + Communication.masterDrone.id + "\n";
+                message += "MasterID: " + Communication.masterDrone.id + "\t";
+                if (Communication.masterDrone.masterConnectorId != null) {
+                    message += ", ConnectorID: " + Communication.masterDrone.masterConnectorId + "\n";
+                }
             }
-        }
-        if (myDrone.dockingHandle.dockingInProgress) {
-            long dockingTimeTaken = Communication.getTimestamp() - myDrone.dockingHandle.dockingStart;
-            message += "Docking in progress (" + dockingTimeTaken + "s)\n";
-        }
-
-        if (myDrone.dockingHandle.connectionStart > 0) {
-            message += "Docking connection established. \t";
         }
         message += "Status: " + myDrone.status  + "\n";
         if (myDrone.navHandle.nearbyEntities != null && myDrone.navHandle.nearbyEntities.Count() > 0) {
@@ -96,6 +122,7 @@ public class Display
                 message += " => " + myDrone.navHandle.nearbyEntities[i].name + " (Distance: " + myDrone.navHandle.nearbyEntities[i].distance + ")" + "\n";
             }
         }
+        message += "Active docking procedures: " + Docking.activeDockingProcedures.Count + "\n";
         message += msg + "\n";
         message += "=== Drones connected (" + Communication.connectedNodes.Count + ") ===\n";
         double distance;

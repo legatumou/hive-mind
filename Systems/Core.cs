@@ -18,9 +18,6 @@ public class Core
         Core.coreBlock = (IMyProgrammableBlock) this.myGrid.GridTerminalSystem.GetBlockWithName("[Drone] Core");
     }
 
-
-    // @TODO: Move bottom methods.
-
     public void updateDroneData() {
         List<IMyBatteryBlock> vBatteries = new List<IMyBatteryBlock>();
         this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyBatteryBlock>(vBatteries, c => c.BlockDefinition.ToString().ToLower().Contains("battery"));

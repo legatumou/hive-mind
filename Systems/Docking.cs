@@ -3,16 +3,9 @@ public class Docking
 {
     public MyGridProgram myGrid;
 
+    public static List<DockingProcedure> activeDockingProcedures = new List<DockingProcedure>();
+
     public bool amAMaster = false;
-    public bool hasDockingPermission = false;
-    public bool dockingInProgress = false;
-    public bool enableLock = false;
-    public long dockingStart = 0;
-    public long connectionStart = 0;
-    public bool pistonOpen = true;
-    public int dockingStep = 2;
-    public int dockingWithDrone = 0;
-    public int queuePos = 0;
     public Navigation navHandle;
 
     public Docking(MyGridProgram myGrid) {
@@ -23,136 +16,132 @@ public class Docking
         this.navHandle = navHandle;
     }
 
-    public IMyShipConnector getAvailableConnector() {
-        List<IMyShipConnector> blocks = new List<IMyShipConnector>();
-        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyShipConnector>(blocks);
-        foreach (IMyShipConnector connector in blocks) {
-            if (connector.CustomName.Contains("[Drone]")) {
-                return connector;
+    public void initDockingWith(int id) {
+        DockingProcedure proc = new DockingProcedure(id);
+        proc.setNavHandle(this.navHandle);
+        proc.initDocking();
+    }
+
+    public static DockingProcedure getDockingProcedure(int id) {
+        for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
+            if (Docking.activeDockingProcedures[i].myConnector.connectorId == id) {
+                return Docking.activeDockingProcedures[i];
             }
         }
         return null;
     }
 
-    public void initDocking() {
-        this.dockingInProgress = true;
-        this.enableLock = true;
-        this.hasDockingPermission = false;
-        this.dockingStep = 2;
-        this.queuePos = 0;
-        this.connectionStart = 0;
-        this.dockingStart = Communication.getTimestamp();
-        this.setConnectorState(true);
-    }
-
-    public void haltDocking(string reason = "unknown") {
-        this.dockingInProgress = false;
-        this.hasDockingPermission = false;
-        this.enableLock = false;
-        this.dockingStart = 0;
-        this.connectionStart = 0;
-        this.dockingStep = 2;
-
-        IMyShipConnector connector = this.getAvailableConnector();
-        if (connector != null) {
-            this.setConnectorState(false);
+    public static DockingProcedure getDroneDockingProcedure(int droneId) {
+        for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
+            if (Docking.activeDockingProcedures[i].dockingWithDrone == droneId) {
+                return Docking.activeDockingProcedures[i];
+            }
         }
+        return null;
+    }
 
-        this.setPistonState(false);
-
-        if (this.dockingWithDrone != 0) {
-            // Send halt dock signal.
-            this.navHandle.commHandle.sendStopDocking(reason, this.dockingWithDrone);
-            this.dockingWithDrone = 0;
+    public static bool dockingWithDrone(int id) {
+        for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
+            if (Docking.activeDockingProcedures[i].dockingWithDrone == id) {
+                return true;
+            }
         }
+        return false;
     }
 
-    public bool isDockingInProgress() {
-        return this.dockingInProgress;
-    }
-
-    public void setPistonState(bool state) {
-        List<IMyPistonBase> blocks = new List<IMyPistonBase>();
-        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyPistonBase>(blocks);
-        this.pistonOpen = state;
-        foreach (IMyPistonBase block in blocks) {
-            if (block.CustomName.Contains("[Drone]")) {
-                if (state == true) {
-                    block.Extend();
-                } else {
-                    block.Retract();
-                }
+    public void clearActiveProcedures() {
+        // Remove from active procedure list
+        for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
+            if (Docking.activeDockingProcedures[i].dockingInProgress == false) {
+                Docking.activeDockingProcedures.RemoveAt(i);
             }
         }
     }
 
-    public void handleDockedStep() {
+    public void handleDockedStep(DockingProcedure procedure) {
         this.navHandle.gyroHandle.disableOverride();
         Communication.currentNode.status = "docked";
-        if (Communication.getTimestamp() - this.connectionStart > 30) {
-            this.haltDocking("docking-timeout");
+        if (Communication.getTimestamp() - procedure.connectionStart > 10) {
+            procedure.haltDocking("docking-timeout");
         }
     }
 
-    public void handleFinalStep() {
+    public void handleFinalStep(DockingProcedure procedure) {
         Communication.currentNode.status = "docking-step-final";
         this.navHandle.setAutopilotStatus(false);
-        if (this.connectionStart > 0) {
-            this.handleDockedStep();
+        if (procedure.connectionStart > 0) {
+            this.handleDockedStep(procedure);
         } else {
-            if (Communication.masterDrone.dockingHandle.dockingInProgress) {
-                IMyShipConnector connector = this.getAvailableConnector();
-                if (connector.Status != MyShipConnectorStatus.Connected) {
-                    this.setConnectorState(true);
+            AnchoredConnector connector = procedure.myConnector;
+            if (connector != null) {
+                if (connector.block.Status != MyShipConnectorStatus.Connected) {
+                    Vector3D targetPos = this.getDockingPosition(1, procedure);
+                    double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
+                    AnchoredConnector.setConnectorState(connector.connectorId, true);
                     this.navHandle.commHandle.sendDockingLockRequest(1);
-                    this.navHandle.gyroHandle.rotateShip(3); // Rotate near connector.
+                    this.navHandle.gyroHandle.rotateShip(2); // Rotate near connector.
+                } else if (connector.block.Status == MyShipConnectorStatus.Connected) {
+                    procedure.connectionStart = Communication.getTimestamp();
+                    Communication.currentNode.status = "docking-step-connected";
                 }
             } else {
-                Vector3D targetPos = this.getDockingPosition(1);
-                double distance = this.navHandle.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
-                if (distance > 2) {
-                    this.haltDocking("out-of-docking-bounds");
-                }
+                Display.printDebug("No connectors found, total connectors: " + AnchoredConnector.anchoredConnectors.Count);
+                Communication.currentNode.status = "error-connector-not-found";
             }
         }
     }
 
-    public void handleStepOne() {
-        Vector3D targetPos = this.getNextDockingPosition();
+    public void handleStepOne(DockingProcedure procedure) {
+        Vector3D targetPos = this.getNextDockingPosition(procedure);
         Communication.currentNode.status = "docking-step-1";
-        this.navHandle.move(targetPos, "docking");
-        this.navHandle.setCollisionStatus(true);
+        this.navHandle.move(targetPos, "docking-step-1");
         this.navHandle.setCollisionStatus(false);
         this.navHandle.gyroHandle.disableOverride();
     }
 
-    public void handleStepTwo () {
+    public void handleStepTwo(DockingProcedure procedure) {
         Communication.currentNode.status = "docking-step-2";
-        Vector3D targetPos = this.getNextDockingPosition();
-        this.navHandle.move(targetPos, "docking");
-        this.navHandle.setCollisionStatus(true);
+        Vector3D targetPos = this.getNextDockingPosition(procedure, 200);
+        this.navHandle.move(targetPos, "docking-step-2");
         this.navHandle.setCollisionStatus(false);
         this.navHandle.commHandle.sendDockingLockRequest(0);
         this.navHandle.gyroHandle.disableOverride();
 
     }
 
-    public void handleStepQueueing () {
+    public void handleStepQueueing(DockingProcedure procedure) {
         this.navHandle.gyroHandle.disableOverride();
         if (this.navHandle.commHandle != null) {
             Communication.currentNode.status = "waiting-dock-permissions";
             this.navHandle.commHandle.sendDockingRequest();
-            Vector3D queuePos = this.getQueuePosition();
-            double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), queuePos);
-            if (distance > 50) {
-                this.navHandle.move(queuePos, "going-to-queue");
-                this.navHandle.setCollisionStatus(false);
-                this.navHandle.setCollisionStatus(true);
-                this.navHandle.setAutopilotStatus(true);
+            if (Communication.masterDrone.masterConnectorId == null) {
+                Vector3D queuePos = this.getQueuePosition();
+                if (queuePos.X != 0) {
+                    double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), queuePos);
+                    if (distance > 100) {
+                        this.navHandle.move(queuePos, "going-to-queue");
+                        this.navHandle.setCollisionStatus(true);
+                        this.navHandle.setAutopilotStatus(true);
+                    }
+                }
+                Communication.currentNode.status = "waiting-for-connector";
+                return;
             } else {
-                this.navHandle.commHandle.sendDockingStep(this.dockingStep + 1);
-                this.navHandle.setCollisionStatus(true);
-                this.navHandle.setAutopilotStatus(false);
+                Vector3D queuePos = this.getQueuePosition();
+                double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), queuePos);
+                if (distance > 50) {
+                    Communication.currentNode.status = "navigating-to-queue";
+                    this.navHandle.move(queuePos, "going-to-queue");
+                    this.navHandle.setCollisionStatus(true);
+                    this.navHandle.setAutopilotStatus(true);
+                } else {
+                    if (procedure != null) {
+                        Communication.currentNode.status = "waiting-in-queue";
+                        this.navHandle.commHandle.sendDockingStep(procedure.dockingStep + 1);
+                        this.navHandle.setCollisionStatus(false);
+                        this.navHandle.setAutopilotStatus(false);
+                    }
+                }
             }
         } else {
             Communication.currentNode.status = "failed-communication";
@@ -160,26 +149,9 @@ public class Docking
         }
     }
 
-    public void setConnectorState(bool state) {
-        IMyShipConnector connector = this.getAvailableConnector();
-        connector.Enabled = state;
-    }
-
-    public Vector3D getAnchorPosition(int anchorId) {
-        Vector3D anchorPosition = new Vector3D(0, 0, 0);
-        List<IMySensorBlock> blocks = new List<IMySensorBlock>();
-        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(blocks);
-        foreach (IMySensorBlock block in blocks) {
-            if (block.CustomName.Contains("[Drone]") && block.CustomName.Contains("[Anchor" + anchorId + "]")) {
-                anchorPosition = block.GetPosition();
-                break;
-            }
-        }
-
-        return anchorPosition;
-    }
-
-    public Vector3D getAnchoredConnectorPosition(Vector3D anchorBottomPosition, Vector3D anchorTopPosition, double distance) {
+    public Vector3D getMasterPosition(double distance) {
+        Vector3D anchorBottomPosition = Communication.masterDrone.connectorAnchorBottomPosition;
+        Vector3D anchorTopPosition = Communication.masterDrone.connectorAnchorTopPosition;
         Vector3D result = new Vector3D(0, 0, 0);
         result.X = anchorBottomPosition.X + ((anchorBottomPosition.X - anchorTopPosition.X) * (distance/39));
         result.Y = anchorBottomPosition.Y + ((anchorBottomPosition.Y - anchorTopPosition.Y) * (distance/39));
@@ -188,28 +160,33 @@ public class Docking
     }
 
     public Vector3D getQueuePosition() {
-        Vector3D targetPos = this.getAnchoredConnectorPosition(Communication.masterDrone.connectorAnchorBottomPosition, Communication.masterDrone.connectorAnchorTopPosition, 1000);
-
-        return targetPos;
-    }
-
-    public Vector3D getDockingPosition(int step) {
-        Vector3D targetPos = this.getAnchoredConnectorPosition(Communication.masterDrone.connectorAnchorBottomPosition, Communication.masterDrone.connectorAnchorTopPosition, step * 50);
-
-        return targetPos;
-    }
-
-    public Vector3D getNextDockingPosition() {
-        // Reset if no joy
-        if (this.dockingStep <= 0) {
-            this.dockingStep = 2;
+        if (Communication.masterDrone != null && Communication.masterDrone.position.X != 0) {
+            Vector3D targetPos = Communication.masterDrone.position;
+            targetPos.X += 100; // Offset from ship
+            return targetPos;
         }
-        Vector3D targetPos = this.getAnchoredConnectorPosition(Communication.masterDrone.connectorAnchorBottomPosition, Communication.masterDrone.connectorAnchorTopPosition, this.dockingStep * 50);
+        return new Vector3D(0,0,0);
+    }
+
+    public Vector3D getDockingPosition(int step, DockingProcedure procedure) {
+        if (Communication.masterDrone != null && Communication.masterDrone.connectorAnchorTopPosition.X != null) {
+            Vector3D targetPos = this.getMasterPosition(procedure.dockingStep * 50);
+            return targetPos;
+        }
+        return new Vector3D(0,0,0);
+    }
+
+    public Vector3D getNextDockingPosition(DockingProcedure procedure, int offset = 0) {
+        // Reset if no joy
+        if (procedure.dockingStep <= 0) {
+            procedure.dockingStep = 2;
+        }
+        Vector3D targetPos = this.getMasterPosition((procedure.dockingStep * 50) + offset);
         double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
+        this.navHandle.commHandle.sendDockingStep(procedure.dockingStep);
         if (distance < 2) {
-            this.dockingStep--;
-            this.navHandle.commHandle.sendDockingStep(this.dockingStep);
-            targetPos = this.getAnchoredConnectorPosition(Communication.masterDrone.connectorAnchorBottomPosition, Communication.masterDrone.connectorAnchorTopPosition, this.dockingStep * 50);
+            procedure.dockingStep--;
+            targetPos = this.getMasterPosition((procedure.dockingStep * 50) + offset);
         }
 
         return targetPos;
@@ -219,59 +196,16 @@ public class Docking
         return Math.Round( Vector3D.Distance( pos, pos2 ), 2 );
     }
 
-    public void handleLockingMechanism() {
-        IMyShipConnector connector = this.getAvailableConnector();
-        if (connector != null) {
-            if (this.dockingInProgress == true) {
-                if (!connector.Enabled) {
-                    connector.Enabled = true;
-                }
-                if (connector.Status != MyShipConnectorStatus.Connected) {
-                    if (this.enableLock == true) {
-                        connector.PullStrength = 100;
-                        if (connector.Status == MyShipConnectorStatus.Connectable) {
-                            connector.Connect();
-                            if (this.connectionStart == 0) {
-                                this.connectionStart = Communication.getTimestamp();
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    public void approveDocking() {
-        this.hasDockingPermission = true;
-    }
-
     public void handleDockingProcedure() {
-        if (this.dockingInProgress == true) {
-            // Make sure drone still exists.
-            if (Communication.currentNode.dockingHandle.dockingWithDrone != 0) {
-                int nodeIndex = this.navHandle.commHandle.getNodeIndexById(Communication.currentNode.dockingHandle.dockingWithDrone);
-                if (nodeIndex == -1) {
-                    this.haltDocking("drone-not-found");
-                }
-            }
+        for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
+            Docking.activeDockingProcedures[i].handleProcedure();
+        }
+        this.clearActiveProcedures();
+    }
 
-            // Last resort timeout
-            if (Communication.getTimestamp() - this.dockingStart > 300) { // After 5 minutes of docking attempts, you should abandon the drone.
-                this.haltDocking("last-resort-timeout");
-            }
-            if (Communication.getTimestamp() - this.dockingStart > 10) {
-                if (this.connectionStart > 10) {
-                    IMyShipConnector connector = this.getAvailableConnector();
-                    if (connector != null && connector.Status != MyShipConnectorStatus.Connected) {
-                        this.haltDocking("no-connection");
-                    }
-                }
-            }
-        } else {
-            IMyShipConnector connector = this.getAvailableConnector();
-            if (connector != null && connector.Status == MyShipConnectorStatus.Connected || (this.connectionStart > 0 && Communication.getTimestamp() - this.connectionStart > 3)) {
-                this.haltDocking("docking-not-in-progress");
-            }
+    public void handleDockingMechanism() {
+        for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
+            Docking.activeDockingProcedures[i].handleLockingMechanism();
         }
     }
 }
