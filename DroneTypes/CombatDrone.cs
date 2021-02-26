@@ -11,13 +11,22 @@ public class Drone : NodeData
         NodeData targetFriend = this.findFriends();
         Vector3D newPos = this.getIdlePosition();
 
-        if (newPos.X == 0) {
-            this.status = "moving-to-master";
-            Random rand = new Random();
-            newPos.X += rand.Next(50, 200); // Offset from ship
-            newPos.Y += rand.Next(50, 200); // Offset from ship
-            newPos.Z += rand.Next(50, 200); // Offset from ship
-            this.navHandle.move(newPos, "running-to-friend");
+        if (newPos.X != 0) {
+            if (Communication.masterDrone != null && Communication.masterDrone.position.X != 0) {
+                double distance = this.navHandle.getDistanceFrom(this.navHandle.getShipPosition(), Communication.masterDrone.position);
+                if (distance > 500) {
+                    this.status = "moving-to-master";
+                    Random rand = new Random();
+                    newPos.X += rand.Next(50, 200); // Offset from ship
+                    newPos.Y += rand.Next(50, 200); // Offset from ship
+                    newPos.Z += rand.Next(50, 200); // Offset from ship
+                    this.navHandle.move(newPos, "running-to-friend");
+                } else {
+                    this.status = "waiting-for-enemies";
+                }
+            } else {
+                this.status = "waiting-for-master";
+            }
         }
     }
 
@@ -25,9 +34,9 @@ public class Drone : NodeData
         if (Communication.masterDrone != null) {
             Vector3D targetPos = Communication.masterDrone.position;
             Random rand = new Random();
-            targetPos.X += rand.Next(20, 100); // Offset from ship
-            targetPos.Y += rand.Next(20, 100); // Offset from ship
-            targetPos.Z += rand.Next(20, 100); // Offset from ship
+            targetPos.X += rand.Next(-500, 500); // Offset from ship
+            targetPos.Y += rand.Next(-500, 500); // Offset from ship
+            targetPos.Z += rand.Next(-500, 500); // Offset from ship
             return targetPos;
         }
         return new Vector3D(0,0,0);
@@ -38,7 +47,10 @@ public class Drone : NodeData
         if (Communication.masterDrone == null) {
             this.status = "waiting-for-master";
             this.commHandle.sendMasterRequest();
-            return;
+        }
+
+        if (this.battery < 5) {
+            return; // Solar cells need to recharge.
         }
         this.status = "looking-for-targets";
         DetectedEntity target = this.getTarget();
@@ -49,9 +61,9 @@ public class Drone : NodeData
 
             // Add some random movement.
             Random rnd = new Random();
-            targetPos.X += (int) rnd.Next(-10, 10);
-            targetPos.Y += (int) rnd.Next(-10, 10);
-            targetPos.Z += (int) rnd.Next(-10, 10);
+            targetPos.X += (int) rnd.Next(-100, 100);
+            targetPos.Y += (int) rnd.Next(-100, 100);
+            targetPos.Z += (int) rnd.Next(-100, 100);
 
             // Execute movement
             this.navHandle.move(targetPos, "target-position");
@@ -64,7 +76,7 @@ public class Drone : NodeData
     public DetectedEntity getTarget()
     {
         DetectedEntity closest = new DetectedEntity();
-        string[] targetList = {"SmallGrid", "LargeGrid", "CharacterHuman", "CharacterOther"};
+        string[] targetList = {"Small Grid", "Large Grid", "Character Human", "Character Other"};
         double closestDistance = 3000;
         double targetDistance;
         foreach (DetectedEntity entity in this.navHandle.nearbyEntities) {
