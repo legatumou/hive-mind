@@ -16,6 +16,7 @@ public class Communication
     private long lastEntityDataUpdate = 0;
     private long lastDockLockRequest = 0;
     private long lastDockingStep = 0;
+    private bool debug = true;
 
     public Communication(MyGridProgram myGrid) {
         this.myGrid = myGrid;
@@ -199,6 +200,9 @@ public class Communication
 
     public void broadcastMessage(string messageOut) {
         string tag1 = "drone-channel";
+        if (this.debug == true) {
+            Display.printDebug("[OUT] " + messageOut);
+        }
 
         string[] dataSplitted = messageOut.Split('_');
         this.myGrid.IGC.SendBroadcastMessage(tag1, messageOut);
@@ -229,6 +233,9 @@ public class Communication
 
                 // Debug log incoming message
                 string[] dataSplitted = msg.Data.ToString().Split('_');
+                if (this.debug == true) {
+                    Display.printDebug("[IN] " + msg.Data.ToString());
+                }
 
                 if( msg.Data.ToString().Substring(0, "drone-ping".Length) == "drone-ping" ) {
                     int id = int.Parse(msg.Data.ToString().Substring("drone-ping".Length + 1));
@@ -284,7 +291,7 @@ public class Communication
     }
 
     public void handleDockingStep(List<CommunicationDataStructureValue> responseData) {
-        if (Communication.currentNode.type != "replicator") return;
+        if (Communication.currentNode.type != "mothership") return;
         int id = 0, slaveId = 0, step = 0, connectorId = 0;
         foreach (CommunicationDataStructureValue data in responseData) {
             if (data.getName() == "id") {
@@ -410,7 +417,7 @@ public class Communication
     }
 
     public void handleDockLockRequest(string data) {
-        if (Communication.currentNode.type != "replicator") return; // Replicators handle docking requests
+        if (Communication.currentNode.type != "mothership") return; // Motherships handle docking requests
         string[] dataSplitted = data.Split('_');
         if (dataSplitted.Count() == 3) {
             int id = int.Parse(dataSplitted[0]);
@@ -421,7 +428,9 @@ public class Communication
             if (procedure != null) {
                 Display.printDebug("[INFO] Changing piston state.");
                 procedure.myConnector.piston.setPistonState((bool) (status == 1));
-                AnchoredConnector.setConnectorState(procedure.myConnector.connectorId, (bool) (status == 1));
+                if (procedure.myConnector != null) {
+                    AnchoredConnector.setConnectorState(procedure.myConnector.connectorId, (bool) (status == 1));
+                }
             } else {
                 Display.printDebug("[WARN] Docking procedure not found.");
             }
@@ -429,7 +438,7 @@ public class Communication
     }
 
     public void handleDockingAccepted(string data) {
-        if (Communication.currentNode.type == "replicator") return; // Replicators handle docking requests
+        if (Communication.currentNode.type == "mothership") return; // Motherships handle docking requests
         string[] dataSplitted = data.Split('_');
         if (dataSplitted.Count() == 2) {
             int id = int.Parse(dataSplitted[0]);
@@ -457,7 +466,7 @@ public class Communication
     }
 
     public void handleDockingRequest(string data) {
-        if (Communication.currentNode.type != "replicator") return; // Replicators handle docking requests
+        if (Communication.currentNode.type != "mothership") return; // Motherships handle docking requests
         string[] dataSplitted = data.Split('_');
         if (dataSplitted.Count() == 2) {
             int id = int.Parse(dataSplitted[0]);
@@ -476,9 +485,11 @@ public class Communication
                 Display.print("Docking request denied (Connectors full).");
             } else {
                 if (Docking.dockingWithDrone(slaveId)) {
+                    Display.print("Already accepted, continue on docking.");
                     this.sendDockingAccepted(slaveId);
                     this.sendConnectorData(slaveId);
                 } else {
+                    Display.print("Assigning a proper connector.");
                     DockingProcedure dock = new DockingProcedure(slaveId);
                     dock.setNavHandle(Communication.currentNode.navHandle);
                     dock.initDocking();
@@ -494,7 +505,7 @@ public class Communication
     }
 
     public void handleMasterAcceptance(string data) {
-        if (Communication.currentNode.type == "replicator") return; // Replicators are the masters.
+        if (Communication.currentNode.type == "mothership") return; // Motherships are the masters.
         string[] dataSplitted = data.Split('_');
         if (dataSplitted.Count() == 2) {
             int id = int.Parse(dataSplitted[0]);
@@ -515,7 +526,7 @@ public class Communication
     }
 
     public void handleMasterRequest(int id) {
-        if (Communication.currentNode.type != "replicator") return; // Replicators are the masters.
+        if (Communication.currentNode.type != "mothership") return; // Motherships are the masters.
         if (this.isSlaveConnected(id)) {
             this.sendMasterAcceptance(id);
             Display.print("Slave already accepted, accepting again. (ID: " + id + ")");
@@ -552,6 +563,7 @@ public class Communication
         string[] dataSplitted = data.Split('_');
         if (dataSplitted.Count() == fieldCount) {
             int id = int.Parse(dataSplitted[0]);
+            if (id == Communication.currentNode.id) return;
             int nodeIndex = this.getNodeIndexById(id);
             if (nodeIndex == -1) {
                 Communication.connectedNodes.Add(id);

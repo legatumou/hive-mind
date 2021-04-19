@@ -18,6 +18,11 @@ public class Core
         Core.coreBlock = (IMyProgrammableBlock) this.myGrid.GridTerminalSystem.GetBlockWithName("[Drone] Core");
     }
 
+    public static bool isLocal(IMyTerminalBlock block) {
+        if (Core.coreBlock == null) return false;
+        return (block.CubeGrid == Core.coreBlock.CubeGrid);
+    }
+
     public void updateDroneData() {
         List<IMyBatteryBlock> vBatteries = new List<IMyBatteryBlock>();
         this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyBatteryBlock>(vBatteries, c => c.BlockDefinition.ToString().ToLower().Contains("battery"));

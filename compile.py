@@ -3,7 +3,7 @@ import shutil
 import glob
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
-droneTypes = ['CombatDrone.cs', 'DrillingDrone.cs', 'ReplicatorDrone.cs', 'ProjectorDrone.cs']
+droneTypes = ['CombatDrone.cs', 'DrillingDrone.cs', 'MothershipDrone.cs', 'ProjectorDrone.cs']
 
 
 for droneTypeFileName in droneTypes:

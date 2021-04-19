@@ -76,7 +76,7 @@ public class NodeData
     }
 
     public bool isMasterNode() {
-        return (this.type == "replicator");
+        return (this.type == "mothership");
     }
 
     public void turnOnDrones() {

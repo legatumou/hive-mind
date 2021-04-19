@@ -31,22 +31,19 @@ public void Main()
 public Program()
 {
     nodeId = generateRandomId();
+    runMainLoop = true;
     Echo("Loading drone, ID: " + nodeId);
     Display.myGrid = this;
     Display.fetchOutputDevices();
     commHandle = new Communication(this);
     initCore(nodeId);
-    LCDPanel = GridTerminalSystem.GetBlockWithName("[Drone] LCD") as IMyTextPanel;
-    if (LCDPanel != null) {
-        LCDPanel.CustomData = "" + nodeId;
-    }
     Runtime.UpdateFrequency = UpdateFrequency.Update100;
     commHandle.setupAntenna();
 
     if (this.validation()) {
         Display.print("Systems online.");
-        runMainLoop = true;
     } else {
+        runMainLoop = false;
         Display.print("[Drone] Core is missing!");
     }
 }
@@ -77,5 +74,5 @@ public bool validation() {
 public int generateRandomId()
 {
     Random rnd = new Random();
-    return rnd.Next(0, 10000);
+    return rnd.Next(1, 10000);
 }

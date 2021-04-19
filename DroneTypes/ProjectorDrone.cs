@@ -3,9 +3,9 @@ public class Drone : NodeData
 {
     long lastLoopTime = 0;
     private IMyProjector myProjector;
-    public Vector3D myReplicationPosition =  new Vector3D(0,0,0);
     private bool replicatingInProgress = false;
     private string currentlyReplicatingType = "SmallMining";
+    private long grinderStart = 0;
 
     public static List<string> blueprintList = new List<string>() { "SmallMining", "SmallProjector" };
 
@@ -24,25 +24,6 @@ public class Drone : NodeData
     }
 
     public void mainLogic() {
-        if (this.movingFromCreator) {
-            int nodeIndex = this.commHandle.getNodeIndexById(this.creatorId);
-            if (nodeIndex != -1) {
-                Drone creator = Communication.connectedNodesData[nodeIndex];
-                if (creator.position.X != 0) {
-                    Communication.currentNode.status = "finding-home";
-                    creator.position.X += 5000;
-                    creator.position.Y += 5000;
-                    creator.position.Z += 5000;
-                    this.navHandle.setCollisionStatus(true);
-                    this.navHandle.move(creator.position, "finding-home");
-                }
-            }
-        }
-        if (Communication.masterDrone == null) {
-            this.status = "waiting-for-master";
-            this.commHandle.sendMasterRequest();
-            return;
-        }
         this.replicate();
     }
 
@@ -57,23 +38,11 @@ public class Drone : NodeData
         return null;
     }
 
-    public Vector3D getReplicationPosition() {
-        if (Communication.masterDrone != null) {
-            Vector3D targetPos = Communication.masterDrone.position;
-            Random rand = new Random();
-            targetPos.X += rand.Next(20, 100); // Offset from ship
-            targetPos.Y += rand.Next(20, 100); // Offset from ship
-            targetPos.Z += rand.Next(20, 100); // Offset from ship
-            return targetPos;
-        }
-        return new Vector3D(0,0,0);
-    }
-
     public IMyProjector getProjector() {
         List<IMyProjector> blocks = new List<IMyProjector>();
         this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyProjector>(blocks);
         foreach (IMyProjector block in blocks) {
-            if (block.CustomName.Contains("[Drone]") && block.CustomName.Contains("[" + this.currentlyReplicatingType + "]")) {
+            if (block.CustomName.Contains("[Drone]")) {
                 return block;
             }
         }
@@ -91,54 +60,39 @@ public class Drone : NodeData
         }
         IMyProjector myProjector = this.myProjector;
         IMyShipGrinder grinder = this.getGrinder();
-        Vector3D replicationPosition = this.myReplicationPosition;
-        if (replicationPosition.X != 0) {
-            double distance = this.navHandle.getDistanceFrom(replicationPosition, Communication.masterDrone.position);
-            if (distance > 100) {
-                // too far from nanites, try again.
-                this.status = "finding-replication-position-" + distance;
-                this.myReplicationPosition = this.getReplicationPosition();
-                return;
-            }
-            if (grinder != null) {
-                if (myProjector != null) {
-                    distance = this.navHandle.getDistanceFrom(replicationPosition, this.navHandle.getShipPosition());
-                    if (distance < 5) {
-                        this.navHandle.setAutopilotStatus(false);
-                        this.navHandle.setCollisionStatus(false);
-                        if (this.replicatingInProgress == true && myProjector.RemainingArmorBlocks < 5) { // Acceptable loss
-                            if (myProjector.RemainingBlocks == myProjector.RemainingArmorBlocks) {
-                                // Turn on other drone logic block.
-                                this.turnOnDrones();
-                                // Cut it free
-                                grinder.Enabled = true; // release the new ship.
-                                this.commHandle.sendMasterFinishedSignal(this.id);
-                                this.replicatingInProgress = false;
-                                this.status = "finishing-replication";
-                                // @TODO: switch to another projector?
-                            } else {
-                                this.status = "non-armor-blocks-remainig";
-                            }
-                        } else {
-                            this.replicatingInProgress = true;
-                            this.status = "replicating";
-                            myProjector.Enabled = true;
-                        }
+        if (grinder != null) {
+            if (myProjector != null) {
+                if (this.grinderStart != 0 && Communication.getTimestamp() - this.grinderStart > 30) {
+                    this.grinderStart = 0;
+                    grinder.Enabled = false;
+                }
+
+                if (this.replicatingInProgress == true) { // Acceptable loss
+                    if (myProjector.RemainingBlocks == myProjector.RemainingArmorBlocks) {
+                        // Turn on other drone logic block.
+                        this.turnOnDrones();
+                        // Cut it free
+                        grinder.Enabled = true; // release the new ship.
+                        this.grinderStart = Communication.getTimestamp();
+                        this.commHandle.sendMasterFinishedSignal(this.id);
+                        this.replicatingInProgress = false;
+                        this.status = "finishing-replication";
+                        // @TODO: switch to another projector?
                     } else {
-                        this.navHandle.move(replicationPosition, "replicating-position");
-                        this.status = "moving-to-position";
-                        this.navHandle.setCollisionStatus(true);
+                        this.status = "non-armor-blocks-remainig";
                     }
                 } else {
+                    this.replicatingInProgress = true;
+                    this.status = "replicating";
                     grinder.Enabled = false;
-                    this.status = "missing-projector";
+                    myProjector.Enabled = true;
                 }
             } else {
-                this.status = "unable-to-replicate";
+                grinder.Enabled = false;
+                this.status = "missing-projector";
             }
         } else {
-            this.myReplicationPosition = this.getReplicationPosition();
-            this.status = "waiting-for-position";
+            this.status = "unable-to-replicate";
         }
     }
 }

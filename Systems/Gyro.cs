@@ -41,6 +41,7 @@ public class Gyro
         List<IMyGyro> blocks = new List<IMyGyro>();
         this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyGyro>(blocks);
         foreach (IMyGyro block in blocks) {
+            if (!Core.isLocal(block)) continue;
             if (!block.GyroOverride) {
                 block.ApplyAction("Override");
             }
@@ -53,6 +54,7 @@ public class Gyro
         List<IMyGyro> blocks = new List<IMyGyro>();
         this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyGyro>(blocks);
         foreach (IMyGyro block in blocks) {
+            if (!Core.isLocal(block)) continue;
             if (block.GyroOverride) {
                 block.ApplyAction("Override");
             }

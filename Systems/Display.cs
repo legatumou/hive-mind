@@ -33,7 +33,7 @@ public class Display
             string msg = Display.generateMessage(string.Join("\n", Display.printQueue));
             // TextPanels
             foreach (IMyTextPanel panel in Display.TextPanels) {
-                if (panel.CustomName.Contains("[Drone]") && !panel.CustomName.Contains("[Debug]") && !panel.CustomName.Contains("[Docking]")) {
+                if (Core.isLocal(panel) && panel.CustomName.Contains("[Drone]") && !panel.CustomName.Contains("[Debug]") && !panel.CustomName.Contains("[Docking]")) {
                     panel.WriteText(msg, false);
                 }
             }
@@ -42,7 +42,7 @@ public class Display
             string dockingMsg = Display.generateDockingMessage(string.Join("\n", Display.dockingPrintQueue));
             // TextPanels
             foreach (IMyTextPanel panel in Display.TextPanels) {
-                if (panel.CustomName.Contains("[Drone]") && panel.CustomName.Contains("[Docking]")) {
+                if (Core.isLocal(panel) && panel.CustomName.Contains("[Drone]") && panel.CustomName.Contains("[Docking]")) {
                     panel.WriteText(dockingMsg, false);
                 }
             }
@@ -51,7 +51,7 @@ public class Display
             string debugMsg = Display.generateDebugMessage(string.Join("\n", Display.debugPrintQueue));
             // TextPanels
             foreach (IMyTextPanel panel in Display.TextPanels) {
-                if (panel.CustomName.Contains("[Drone]") && panel.CustomName.Contains("[Debug]")) {
+                if (Core.isLocal(panel) && panel.CustomName.Contains("[Drone]") && panel.CustomName.Contains("[Debug]")) {
                     panel.WriteText(debugMsg, false);
                 }
             }
@@ -103,7 +103,7 @@ public class Display
         message += "=== Drone Overview (ID: " + myDrone.id + " " + myDrone.type + ") ===\n";
         message += "Battery: " + Math.Round(myDrone.battery) + "% (" + vBatteries.Count + " batteries found)\n";
         message += "Speed: " + Math.Round((myDrone.speed / 100), 3) + " | ";
-        if (myDrone.type == "replicator") {
+        if (myDrone.type == "mothership") {
             message += "Slaves: " + Communication.slaves.Count + " | \t";
         } else {
             message += "Space used: " + myDrone.usedInventorySpace + "%\n";

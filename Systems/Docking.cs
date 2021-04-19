@@ -183,9 +183,9 @@ public class Docking
         }
         Vector3D targetPos = this.getMasterPosition((procedure.dockingStep * 50) + offset);
         double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
-        this.navHandle.commHandle.sendDockingStep(procedure.dockingStep);
         if (distance < 2) {
             procedure.dockingStep--;
+            this.navHandle.commHandle.sendDockingStep(procedure.dockingStep);
             targetPos = this.getMasterPosition((procedure.dockingStep * 50) + offset);
         }
 

@@ -24,10 +24,12 @@ public class Piston
     }
 
     public void setPistonState(bool state) {
-        if (state == true) {
-            this.block.Extend();
-        } else {
-            this.block.Retract();
+        if (this.block != null) {
+            if (state == true) {
+                this.block.Extend();
+            } else {
+                this.block.Retract();
+            }
         }
     }
 
