@@ -30,7 +30,7 @@ public void Main()
 
 public Program()
 {
-    nodeId = generateRandomId();
+    nodeId = Core.generateRandomId();
     runMainLoop = true;
     Echo("Loading drone, ID: " + nodeId);
     Display.myGrid = this;
@@ -41,9 +41,11 @@ public Program()
     commHandle.setupAntenna();
 
     if (this.validation()) {
+        Echo("Systems online");
         Display.print("Systems online.");
     } else {
         runMainLoop = false;
+        Echo("Drone core missing.");
         Display.print("[Drone] Core is missing!");
     }
 }
@@ -55,7 +57,8 @@ public void initCore(int nodeId) {
     Communication.currentNode.setCommHandle(commHandle);
     Communication.currentNode.initNavigation(this);
     Communication.currentNode.navHandle.updateRemoteControls();
-    coreHandle.setCoreBlock();
+    Communication.currentNode.navHandle.updateThrusters();
+    coreHandle.handleCoreBlock();
     Anchor.initAnchors(this);
     Piston.initPistons(this);
     AnchoredConnector.initConnectors(this);
@@ -69,10 +72,4 @@ public bool validation() {
         return false;
     }
     return true;
-}
-
-public int generateRandomId()
-{
-    Random rnd = new Random();
-    return rnd.Next(1, 10000);
 }

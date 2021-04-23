@@ -35,7 +35,7 @@ public class Navigation
         List<IMyRemoteControl> handles = new List<IMyRemoteControl>();
         this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(handles, c => c.BlockDefinition.ToString().ToLower().Contains("remote"));
         foreach (IMyRemoteControl handle in handles) {
-            if (handle.CustomName.Contains("[Drone]")) {
+            if (Core.isLocal(handle) && handle.CustomName.Contains("[Drone]")) {
                 this.remotes.Add(handle);
             }
         }
@@ -44,9 +44,18 @@ public class Navigation
     public void updateThrusters() {
         this.thrusters = new List<IMyThrust>();
         List<IMyThrust> handles = new List<IMyThrust>();
-        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyThrust>(handles, c => c.BlockDefinition.ToString().ToLower().Contains("thruster"));
+        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyThrust>(handles);
         foreach (IMyThrust handle in handles) {
-            this.thrusters.Add(handle);
+            if (Core.isLocal(handle)) {
+                this.thrusters.Add(handle);
+            }
+        }
+    }
+
+    public void thrusterStatus(bool status) {
+        Display.printDebug("Changing thrusters (" + this.thrusters.Count + ") status to: " + status);
+        foreach (IMyThrust thruster in this.thrusters) {
+            thruster.Enabled = status;
         }
     }
 
@@ -90,6 +99,10 @@ public class Navigation
             this.clearPath();
             this.lastWaypoint = coords;
             Display.print("Waypoint set: " + waypointName);
+            if (this.remotes.Count == 0) {
+                Display.printDebug("No remotes found.");
+                return;
+            }
             foreach (IMyRemoteControl remote in this.remotes) {
                 remote.AddWaypoint(coords, waypointName);
                 remote.SetAutoPilotEnabled(true);
@@ -117,13 +130,8 @@ public class Navigation
     }
 
     public Vector3D getShipPosition() {
-
-        List<IMyRemoteControl> remotes = new List<IMyRemoteControl>();
-        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(remotes, c => c.BlockDefinition.ToString().ToLower().Contains("remote"));
-        foreach (IMyRemoteControl remote in remotes) {
-            if (remote.CustomName.Contains("[Drone]")) {
-                return remote.GetPosition();
-            }
+        if (Core.coreBlock != null) {
+            return Core.coreBlock.GetPosition();
         }
         return new Vector3D();
     }
@@ -208,7 +216,7 @@ public class Navigation
 
             for (int i = 0; i < this.nearbyEntities.Count; i++) {
                 DetectedEntity nearEntity = this.nearbyEntities[i];
-                if (Communication.getTimestamp() - nearEntity.lastSeen < 300) {
+                if (Communication.getTimestamp() - nearEntity.lastSeen < 7 * 24 * 60 * 60) { // Last seen in 7 days?
                     tmp.Add(nearEntity);
                 }
             }

@@ -78,7 +78,7 @@ public class AnchoredConnector
         Random rand = new Random();
         List<AnchoredConnector> randomConnectors = AnchoredConnector.anchoredConnectors.OrderBy (x => rand.Next()).ToList();
         foreach (AnchoredConnector connector in randomConnectors) {
-            if (Core.isLocal(connector.block) && connector.inUse != true && connector.isAnchored == true) {
+            if (/**Core.isLocal(connector.block) && */connector.inUse != true && connector.isAnchored == true) {
                 return connector;
             }
         }

@@ -204,7 +204,6 @@ public class Communication
             Display.printDebug("[OUT] " + messageOut);
         }
 
-        string[] dataSplitted = messageOut.Split('_');
         this.myGrid.IGC.SendBroadcastMessage(tag1, messageOut);
     }
 
@@ -232,50 +231,66 @@ public class Communication
                 var msg = listens[i].AcceptMessage();
 
                 // Debug log incoming message
-                string[] dataSplitted = msg.Data.ToString().Split('_');
                 if (this.debug == true) {
                     Display.printDebug("[IN] " + msg.Data.ToString());
                 }
 
-                if( msg.Data.ToString().Substring(0, "drone-ping".Length) == "drone-ping" ) {
-                    int id = int.Parse(msg.Data.ToString().Substring("drone-ping".Length + 1));
-                    this.handleResponsePing(id);
-                } else if ( msg.Data.ToString().Substring(0, "drone-generic-data".Length) == "drone-generic-data" ) {
-                    string data = msg.Data.ToString().Substring("drone-generic-data".Length + 1);
-                    this.handleResponseData(data);
-                } else if ( msg.Data.ToString().Substring(0, "drone-docking-request".Length) == "drone-docking-request" ) {
-                    string data = msg.Data.ToString().Substring("drone-docking-request".Length + 1);
-                    this.handleDockingRequest(data);
-                } else if ( msg.Data.ToString().Substring(0, "drone-master-request".Length) == "drone-master-request" ) {
-                    int data = int.Parse(msg.Data.ToString().Substring("drone-master-request".Length + 1));
-                    this.handleMasterRequest(data);
-                } else if ( msg.Data.ToString().Substring(0, "drone-master-accept".Length) == "drone-master-accept" ) {
-                    string data = msg.Data.ToString().Substring("drone-master-accept".Length + 1);
-                    this.handleMasterAcceptance(data);
-                } else if ( msg.Data.ToString().Substring(0, "drone-docking-accept".Length) == "drone-docking-accept" ) {
-                    string data = msg.Data.ToString().Substring("drone-docking-accept".Length + 1);
-                    this.handleDockingAccepted(data);
-                } else if ( msg.Data.ToString().Substring(0, "drone-request-dock-lock".Length) == "drone-request-dock-lock" ) {
-                    string data = msg.Data.ToString().Substring("drone-request-dock-lock".Length + 1);
-                    this.handleDockLockRequest(data);
-                } else if ( msg.Data.ToString().Substring(0, "drone-data-nearby".Length) == "drone-data-nearby" ) {
-                    string data = msg.Data.ToString().Substring("drone-data-nearby".Length);
-                    this.handleDataNearby(this.dataStructure.getFormattedInput(data));
-                } else if ( msg.Data.ToString().Substring(0, "drone-halt-docking".Length) == "drone-halt-docking" ) {
-                    string data = msg.Data.ToString().Substring("drone-halt-docking".Length);
-                    this.handleHaltDocking(this.dataStructure.getFormattedInput(data));
-                } else if ( msg.Data.ToString().Substring(0, "drone-docking-step".Length) == "drone-docking-step" ) {
-                    string data = msg.Data.ToString().Substring("drone-docking-step".Length);
-                    this.handleDockingStep(this.dataStructure.getFormattedInput(data));
-                } else if ( msg.Data.ToString().Substring(0, "drone-connector-data".Length) == "drone-connector-data" ) {
-                    string data = msg.Data.ToString().Substring("drone-connector-data".Length);
-                    this.handleConnectorData(this.dataStructure.getFormattedInput(data));
-                } else if ( msg.Data.ToString().Substring(0, "drone-master-finished".Length) == "drone-master-finished" ) {
-                    string data = msg.Data.ToString().Substring("drone-master-finished".Length);
-                    this.handleMasterFinished(this.dataStructure.getFormattedInput(data));
+                try {
+                    if ( msg.Data.ToString() == "drone-recall_user" ) {
+                       string data = msg.Data.ToString().Substring("drone-recall".Length);
+                       this.handleDroneRecall();
+                    } else if ( msg.Data.ToString() == "drone-release_user" ) {
+                       this.handleDroneRelease();
+                    } else if( msg.Data.ToString().Substring(0, "drone-ping".Length) == "drone-ping" ) {
+                        int id = int.Parse(msg.Data.ToString().Substring("drone-ping".Length + 1));
+                        this.handleResponsePing(id);
+                    } else if ( msg.Data.ToString().Substring(0, "drone-generic-data".Length) == "drone-generic-data" ) {
+                        string data = msg.Data.ToString().Substring("drone-generic-data".Length + 1);
+                        this.handleResponseData(data);
+                    } else if ( msg.Data.ToString().Substring(0, "drone-docking-request".Length) == "drone-docking-request" ) {
+                        string data = msg.Data.ToString().Substring("drone-docking-request".Length + 1);
+                        this.handleDockingRequest(data);
+                    } else if ( msg.Data.ToString().Substring(0, "drone-master-request".Length) == "drone-master-request" ) {
+                        int data = int.Parse(msg.Data.ToString().Substring("drone-master-request".Length + 1));
+                        this.handleMasterRequest(data);
+                    } else if ( msg.Data.ToString().Substring(0, "drone-master-accept".Length) == "drone-master-accept" ) {
+                        string data = msg.Data.ToString().Substring("drone-master-accept".Length + 1);
+                        this.handleMasterAcceptance(data);
+                    } else if ( msg.Data.ToString().Substring(0, "drone-docking-accept".Length) == "drone-docking-accept" ) {
+                        string data = msg.Data.ToString().Substring("drone-docking-accept".Length + 1);
+                        this.handleDockingAccepted(data);
+                    } else if ( msg.Data.ToString().Substring(0, "drone-request-dock-lock".Length) == "drone-request-dock-lock" ) {
+                        string data = msg.Data.ToString().Substring("drone-request-dock-lock".Length + 1);
+                        this.handleDockLockRequest(data);
+                    } else if ( msg.Data.ToString().Substring(0, "drone-data-nearby".Length) == "drone-data-nearby" ) {
+                        string data = msg.Data.ToString().Substring("drone-data-nearby".Length);
+                        this.handleDataNearby(this.dataStructure.getFormattedInput(data));
+                    } else if ( msg.Data.ToString().Substring(0, "drone-halt-docking".Length) == "drone-halt-docking" ) {
+                        string data = msg.Data.ToString().Substring("drone-halt-docking".Length);
+                        this.handleHaltDocking(this.dataStructure.getFormattedInput(data));
+                    } else if ( msg.Data.ToString().Substring(0, "drone-docking-step".Length) == "drone-docking-step" ) {
+                        string data = msg.Data.ToString().Substring("drone-docking-step".Length);
+                        this.handleDockingStep(this.dataStructure.getFormattedInput(data));
+                    } else if ( msg.Data.ToString().Substring(0, "drone-connector-data".Length) == "drone-connector-data" ) {
+                        string data = msg.Data.ToString().Substring("drone-connector-data".Length);
+                        this.handleConnectorData(this.dataStructure.getFormattedInput(data));
+                    } else if ( msg.Data.ToString().Substring(0, "drone-master-finished".Length) == "drone-master-finished" ) {
+                        string data = msg.Data.ToString().Substring("drone-master-finished".Length);
+                        this.handleMasterFinished(this.dataStructure.getFormattedInput(data));
+                    }
+                } catch (Exception e) {
+                    Display.printDebug("[ERROR] Unknown exception in communication system: " + e.Message);
                 }
             }
         }
+    }
+
+    public void handleDroneRelease() {
+        Communication.currentNode.playerCommand = "release";
+    }
+
+    public void handleDroneRecall() {
+        Communication.currentNode.playerCommand = "recall";
     }
 
     public void handleMasterFinished(List<CommunicationDataStructureValue> responseData) {
@@ -380,6 +395,7 @@ public class Communication
             if (procedure != null) {
                 procedure.haltDocking(reason, false);
             }
+            Communication.currentNode.navHandle.activeDockingProcedure = null;
         }
     }
 
@@ -426,9 +442,12 @@ public class Communication
             int slaveId = int.Parse(dataSplitted[2]);
             DockingProcedure procedure = Docking.getDroneDockingProcedure(slaveId);
             if (procedure != null) {
-                Display.printDebug("[INFO] Changing piston state.");
-                procedure.myConnector.piston.setPistonState((bool) (status == 1));
+                if (procedure.myConnector.piston != null) {
+                    Display.printDebug("[INFO] Changing piston state.");
+                    procedure.myConnector.piston.setPistonState((bool) (status == 1));
+                }
                 if (procedure.myConnector != null) {
+                    Display.printDebug("[INFO] Changing connector state.");
                     AnchoredConnector.setConnectorState(procedure.myConnector.connectorId, (bool) (status == 1));
                 }
             } else {

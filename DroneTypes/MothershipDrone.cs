@@ -33,11 +33,12 @@ public class Drone : NodeData
             }*/
 
 
-            this.dockingHandle.handleDockingProcedure();
+            //this.dockingHandle.handleDockingProcedure();
+            this.dockingHandle.clearActiveProcedures();
             this.mainLogic();
             this.lastLoopTime = Communication.getTimestamp();
         }
-        this.dockingHandle.handleDockingMechanism();
+        //this.dockingHandle.handleDockingMechanism();
     }
 
     public void analyzeInventory() {

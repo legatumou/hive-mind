@@ -11,6 +11,7 @@ public class DockingProcedure
     public bool pistonOpen = true;
     public int dockingStep = 2;
     public int queuePos = 0;
+    public int procedureId = 0;
 
     public AnchoredConnector myConnector;
     public Navigation navHandle;
@@ -25,6 +26,7 @@ public class DockingProcedure
         this.hasDockingPermission = false;
         this.dockingStep = 2;
         this.queuePos = 0;
+        this.procedureId = Core.generateRandomId();
         this.connectionStart = 0;
         this.dockingStart = Communication.getTimestamp();
         this.myConnector = AnchoredConnector.getAvailableConnector();
@@ -36,6 +38,10 @@ public class DockingProcedure
     }
 
     public void haltDocking(string reason = "unknown", bool sendSignal = true) {
+        if (Communication.currentNode.playerCommand == "recall") {
+            Display.printDebug("Cannot halt docking, drones are recalled.");
+            return;
+        }
         Display.printDebug("[INFO] Halting docking, reason: " + reason);
         this.dockingInProgress = false;
         this.hasDockingPermission = false;
@@ -68,6 +74,13 @@ public class DockingProcedure
 
         if (Communication.currentNode.navHandle.activeDockingProcedure != null) {
             Communication.currentNode.navHandle.activeDockingProcedure = null;
+        }
+
+        // Remove from active procedure list
+        for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
+            if (Docking.activeDockingProcedures[i] == this) {
+                Docking.activeDockingProcedures.RemoveAt(i);
+            }
         }
     }
 
@@ -105,7 +118,6 @@ public class DockingProcedure
 
     public void handleProcedure() {
         if (this.dockingInProgress == true) {
-            // Make sure drone still exists.
             if (this.dockingWithDrone != 0) {
                 int nodeIndex = this.navHandle.commHandle.getNodeIndexById(this.dockingWithDrone);
                 if (nodeIndex == -1) {
@@ -115,8 +127,7 @@ public class DockingProcedure
                 this.haltDocking("drone-not-found");
             }
 
-            // Last resort timeout
-            if (Communication.getTimestamp() - this.dockingStart > 300) { // After 5 minutes of docking attempts, you should abandon the drone.
+            if (Communication.getTimestamp() - this.dockingStart > 600 && this.connectionStart == 0) {
                 this.haltDocking("last-resort-timeout");
             }
             if (this.dockingStart != 0 && Communication.getTimestamp() - this.dockingStart > 10) {

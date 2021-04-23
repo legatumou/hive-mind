@@ -33,7 +33,7 @@ public class Docking
 
     public static DockingProcedure getDroneDockingProcedure(int droneId) {
         for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
-            if (Docking.activeDockingProcedures[i].dockingWithDrone == droneId) {
+            if (Docking.activeDockingProcedures[i] != null && Docking.activeDockingProcedures[i].dockingWithDrone == droneId) {
                 return Docking.activeDockingProcedures[i];
             }
         }
@@ -52,7 +52,8 @@ public class Docking
     public void clearActiveProcedures() {
         // Remove from active procedure list
         for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
-            if (Docking.activeDockingProcedures[i].dockingInProgress == false) {
+            if (Docking.activeDockingProcedures[i].dockingInProgress == false && Docking.activeDockingProcedures[i].dockingStart - Communication.getTimestamp() > 300) {
+                Docking.activeDockingProcedures[i].haltDocking("mothership-timeout");
                 Docking.activeDockingProcedures.RemoveAt(i);
             }
         }
@@ -60,26 +61,43 @@ public class Docking
 
     public void handleDockedStep(DockingProcedure procedure) {
         this.navHandle.gyroHandle.disableOverride();
+        this.navHandle.thrusterStatus(false);
         Communication.currentNode.status = "docked";
         if (Communication.getTimestamp() - procedure.connectionStart > 10) {
-            procedure.haltDocking("docking-timeout");
+            if (Communication.currentNode.battery > 25) { // Do not disengage if battery too low.
+                this.navHandle.thrusterStatus(true);
+                procedure.haltDocking("docking-timeout");
+            }
         }
     }
 
     public void handleFinalStep(DockingProcedure procedure) {
         Communication.currentNode.status = "docking-step-final";
         this.navHandle.setAutopilotStatus(false);
+        this.navHandle.thrusterStatus(false);
         if (procedure.connectionStart > 0) {
             this.handleDockedStep(procedure);
         } else {
             AnchoredConnector connector = procedure.myConnector;
             if (connector != null) {
                 if (connector.block.Status != MyShipConnectorStatus.Connected) {
-                    Vector3D targetPos = this.getDockingPosition(1, procedure);
-                    double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
-                    AnchoredConnector.setConnectorState(connector.connectorId, true);
-                    this.navHandle.commHandle.sendDockingLockRequest(1);
-                    this.navHandle.gyroHandle.rotateShip(2); // Rotate near connector.
+                    if (connector.block.Status == MyShipConnectorStatus.Connectable) {
+                        this.navHandle.gyroHandle.disableOverride();
+                        connector.block.Connect();
+                    } else {
+                        Vector3D targetPos = this.getDockingPosition(1, procedure);
+                        double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
+                        if (distance > 3) {
+                            this.navHandle.setAutopilotStatus(true);
+                            this.navHandle.move(targetPos, "docking-realign");
+                            this.navHandle.setCollisionStatus(false);
+                        } else {
+                            this.navHandle.setAutopilotStatus(false);
+                            AnchoredConnector.setConnectorState(connector.connectorId, true);
+                            this.navHandle.commHandle.sendDockingLockRequest(1);
+                            this.navHandle.gyroHandle.rotateShip(2); // Rotate near connector.
+                        }
+                    }
                 } else if (connector.block.Status == MyShipConnectorStatus.Connected) {
                     procedure.connectionStart = Communication.getTimestamp();
                     Communication.currentNode.status = "docking-step-connected";
@@ -92,24 +110,43 @@ public class Docking
     }
 
     public void handleStepOne(DockingProcedure procedure) {
-        Vector3D targetPos = this.getNextDockingPosition(procedure);
+        this.navHandle.thrusterStatus(true);
+        this.navHandle.setAutopilotStatus(true);
+        Vector3D targetPos = this.getDockingPosition(1, procedure);
         Communication.currentNode.status = "docking-step-1";
-        this.navHandle.move(targetPos, "docking-step-1");
-        this.navHandle.setCollisionStatus(false);
-        this.navHandle.gyroHandle.disableOverride();
+        double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
+        if (distance < 3) {
+            Display.printDebug("Next docking step.");
+            procedure.dockingStep--;
+        } else {
+            this.navHandle.move(targetPos, "docking-step-1");
+            this.navHandle.setCollisionStatus(false);
+            this.navHandle.gyroHandle.disableOverride();
+        }
     }
 
     public void handleStepTwo(DockingProcedure procedure) {
+        this.navHandle.thrusterStatus(true);
         Communication.currentNode.status = "docking-step-2";
-        Vector3D targetPos = this.getNextDockingPosition(procedure, 200);
-        this.navHandle.move(targetPos, "docking-step-2");
-        this.navHandle.setCollisionStatus(false);
-        this.navHandle.commHandle.sendDockingLockRequest(0);
-        this.navHandle.gyroHandle.disableOverride();
-
+        Vector3D targetPos = this.getDockingPosition(5, procedure);
+        double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
+        if (distance < 3) {
+            Display.printDebug("Next docking step.");
+            procedure.dockingStep--;
+        } else {
+            this.navHandle.move(targetPos, "docking-step-2");
+            if (distance > 100 && Core.generateRandomId() < 7000) {
+                this.navHandle.setCollisionStatus(false);
+            } else {
+                this.navHandle.setCollisionStatus(true);
+            }
+            this.navHandle.commHandle.sendDockingLockRequest(0);
+            this.navHandle.gyroHandle.disableOverride();
+        }
     }
 
     public void handleStepQueueing(DockingProcedure procedure) {
+        this.navHandle.thrusterStatus(true);
         this.navHandle.gyroHandle.disableOverride();
         if (this.navHandle.commHandle != null) {
             Communication.currentNode.status = "waiting-dock-permissions";
@@ -129,7 +166,7 @@ public class Docking
             } else {
                 Vector3D queuePos = this.getQueuePosition();
                 double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), queuePos);
-                if (distance > 50) {
+                if (queuePos.X != 0 && distance > 50) {
                     Communication.currentNode.status = "navigating-to-queue";
                     this.navHandle.move(queuePos, "going-to-queue");
                     this.navHandle.setCollisionStatus(true);
@@ -161,8 +198,7 @@ public class Docking
 
     public Vector3D getQueuePosition() {
         if (Communication.masterDrone != null && Communication.masterDrone.position.X != 0) {
-            Vector3D targetPos = Communication.masterDrone.position;
-            targetPos.X += 100; // Offset from ship
+            Vector3D targetPos = this.getMasterPosition(10 * 50);
             return targetPos;
         }
         return new Vector3D(0,0,0);
@@ -170,26 +206,10 @@ public class Docking
 
     public Vector3D getDockingPosition(int step, DockingProcedure procedure) {
         if (Communication.masterDrone != null && Communication.masterDrone.connectorAnchorTopPosition.X != null) {
-            Vector3D targetPos = this.getMasterPosition(procedure.dockingStep * 50);
+            Vector3D targetPos = this.getMasterPosition(step * 50);
             return targetPos;
         }
         return new Vector3D(0,0,0);
-    }
-
-    public Vector3D getNextDockingPosition(DockingProcedure procedure, int offset = 0) {
-        // Reset if no joy
-        if (procedure.dockingStep <= 0) {
-            procedure.dockingStep = 2;
-        }
-        Vector3D targetPos = this.getMasterPosition((procedure.dockingStep * 50) + offset);
-        double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
-        if (distance < 2) {
-            procedure.dockingStep--;
-            this.navHandle.commHandle.sendDockingStep(procedure.dockingStep);
-            targetPos = this.getMasterPosition((procedure.dockingStep * 50) + offset);
-        }
-
-        return targetPos;
     }
 
     public double getDistanceFrom(Vector3D pos, Vector3D pos2) {

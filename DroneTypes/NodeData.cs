@@ -14,6 +14,7 @@ public class NodeData
     public double speed { get; set; }
     public string type { get; set; }
     public string status { get; set; }
+    public string playerCommand { get; set; }
     public int usedInventorySpace { get; set; }
     public Vector3D position;
     public Vector3D connectorAnchorTopPosition;
@@ -30,6 +31,7 @@ public class NodeData
         this.usedInventorySpace = 0;
         this.speed = 0.0;
         this.status = "init";
+        this.playerCommand = "release";
         this.keepalive = Communication.getTimestamp();
     }
 
@@ -57,8 +59,9 @@ public class NodeData
     public bool hasMaster() {
         if (Communication.masterDrone == null) {
             this.status = "requesting-master";
-            this.commHandle.sendMasterRequest();
-            this.navHandle.clearPath();
+            if (this.commHandle != null) {
+                this.commHandle.sendMasterRequest();
+            }
             return false;
         }
         if (this.status == "requesting-master") {
@@ -106,7 +109,12 @@ public class NodeData
             totalVolume += (double) containerInventory.MaxVolume;
         }
 
-        return (int) ((usedVolume/totalVolume) * 100);
+        int percentage = (int) ((usedVolume/totalVolume) * 100);
+        if (percentage > 100) {
+            return 0;
+        }
+
+        return percentage;
     }
 
     public List<MyInventoryItem> getInventoryContents() {
@@ -137,8 +145,12 @@ public class NodeData
         Display.print("[Error] Unknown drone type.\n");
     }
 
-    public void process(MyGridProgram grid)
-    {
+    public void process(MyGridProgram grid) {
+        // Update modules, in case something changed.
+        this.navHandle.updateRemoteControls();
+        this.navHandle.updateThrusters();
+        Display.fetchOutputDevices();
+
         this.myGrid = grid;
         List<IMySensorBlock> sensors = new List<IMySensorBlock>();
         this.myGrid.GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(sensors, c => c.BlockDefinition.ToString().ToLower().Contains("sensor"));

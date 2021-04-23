@@ -2,7 +2,6 @@
 public class Display
 {
     public static List<IMyTextPanel> LCD = new List<IMyTextPanel>();
-    public static List<IMyTextPanel> TextPanels = new List<IMyTextPanel>();
     public static List<IMyCockpit> Cockpits = new List<IMyCockpit>();
     public static MyGridProgram myGrid;
     public static List<string> printQueue = new List<string>();
@@ -13,8 +12,16 @@ public class Display
     public static bool debug = true; // @TODO: Should be some kind of config or some shit.
 
     public static void fetchOutputDevices() {
-        Display.myGrid.GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(Display.TextPanels, c => c.BlockDefinition.ToString().ToLower().Contains("text"));
-        Display.myGrid.GridTerminalSystem.GetBlocksOfType<IMyCockpit>(Display.Cockpits, c => c.BlockDefinition.ToString().ToLower().Contains("cockpit"));
+        Display.LCD = new List<IMyTextPanel>();
+        List<IMyTextPanel> handles = new List<IMyTextPanel>();
+        Display.myGrid.GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(handles);
+        if (handles.Count == 0) Display.printDebug("No generic handles for LCD found.");
+        foreach (IMyTextPanel handle in handles) {
+            if (Core.isLocal(handle) && handle.CustomName.Contains("[Drone]")) {
+                Display.LCD.Add(handle);
+            }
+        }
+        if (Display.LCD.Count == 0) Display.printDebug("No local handles for LCD found.");
     }
 
     public static void print(string extraMsg) {
@@ -31,8 +38,8 @@ public class Display
 
             // Main info panel
             string msg = Display.generateMessage(string.Join("\n", Display.printQueue));
-            // TextPanels
-            foreach (IMyTextPanel panel in Display.TextPanels) {
+            // LCD
+            foreach (IMyTextPanel panel in Display.LCD) {
                 if (Core.isLocal(panel) && panel.CustomName.Contains("[Drone]") && !panel.CustomName.Contains("[Debug]") && !panel.CustomName.Contains("[Docking]")) {
                     panel.WriteText(msg, false);
                 }
@@ -40,17 +47,19 @@ public class Display
 
             // Docking panel
             string dockingMsg = Display.generateDockingMessage(string.Join("\n", Display.dockingPrintQueue));
-            // TextPanels
-            foreach (IMyTextPanel panel in Display.TextPanels) {
+            // LCD
+            foreach (IMyTextPanel panel in Display.LCD) {
                 if (Core.isLocal(panel) && panel.CustomName.Contains("[Drone]") && panel.CustomName.Contains("[Docking]")) {
                     panel.WriteText(dockingMsg, false);
                 }
             }
 
             // Debug data.
-            string debugMsg = Display.generateDebugMessage(string.Join("\n", Display.debugPrintQueue));
-            // TextPanels
-            foreach (IMyTextPanel panel in Display.TextPanels) {
+            List<string> displayDebug = Display.debugPrintQueue;
+            displayDebug.Reverse();
+            string debugMsg = Display.generateDebugMessage(string.Join("\n", displayDebug));
+            // LCD
+            foreach (IMyTextPanel panel in Display.LCD) {
                 if (Core.isLocal(panel) && panel.CustomName.Contains("[Drone]") && panel.CustomName.Contains("[Debug]")) {
                     panel.WriteText(debugMsg, false);
                 }
@@ -62,13 +71,22 @@ public class Display
 
             Display.myGrid.Echo(msg);
             Display.printQueue = new List<string>();
-            Display.debugPrintQueue = new List<string>();
+            // Debug should keep recent history.
+            for (int i = 0; i < displayDebug.Count; i++) {
+                if (i > 50) {
+                    displayDebug.RemoveAt(i);
+                }
+            }
+
+            displayDebug.Reverse();
+            Display.debugPrintQueue = displayDebug;
         }
     }
 
     public static string generateDockingMessage(string msg) {
         string message = "";
         message += "=== Docking info ===\n";
+        message += "Player command: " + Communication.currentNode.playerCommand + "\n";
         message += "Anchored connectors: " + AnchoredConnector.anchoredConnectors.Count + "\n";
         foreach (AnchoredConnector connector in AnchoredConnector.anchoredConnectors) {
             message += "--> Connector \t";

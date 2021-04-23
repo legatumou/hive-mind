@@ -14,6 +14,7 @@ public class NodeData
     public double speed { get; set; }
     public string type { get; set; }
     public string status { get; set; }
+    public string playerCommand { get; set; }
     public int usedInventorySpace { get; set; }
     public Vector3D position;
     public Vector3D connectorAnchorTopPosition;
@@ -30,6 +31,7 @@ public class NodeData
         this.usedInventorySpace = 0;
         this.speed = 0.0;
         this.status = "init";
+        this.playerCommand = "release";
         this.keepalive = Communication.getTimestamp();
     }
 
@@ -57,8 +59,9 @@ public class NodeData
     public bool hasMaster() {
         if (Communication.masterDrone == null) {
             this.status = "requesting-master";
-            this.commHandle.sendMasterRequest();
-            this.navHandle.clearPath();
+            if (this.commHandle != null) {
+                this.commHandle.sendMasterRequest();
+            }
             return false;
         }
         if (this.status == "requesting-master") {
@@ -106,7 +109,12 @@ public class NodeData
             totalVolume += (double) containerInventory.MaxVolume;
         }
 
-        return (int) ((usedVolume/totalVolume) * 100);
+        int percentage = (int) ((usedVolume/totalVolume) * 100);
+        if (percentage > 100) {
+            return 0;
+        }
+
+        return percentage;
     }
 
     public List<MyInventoryItem> getInventoryContents() {
@@ -137,8 +145,12 @@ public class NodeData
         Display.print("[Error] Unknown drone type.\n");
     }
 
-    public void process(MyGridProgram grid)
-    {
+    public void process(MyGridProgram grid) {
+        // Update modules, in case something changed.
+        this.navHandle.updateRemoteControls();
+        this.navHandle.updateThrusters();
+        Display.fetchOutputDevices();
+
         this.myGrid = grid;
         List<IMySensorBlock> sensors = new List<IMySensorBlock>();
         this.myGrid.GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(sensors, c => c.BlockDefinition.ToString().ToLower().Contains("sensor"));
@@ -393,7 +405,7 @@ public class AnchoredConnector
         Random rand = new Random();
         List<AnchoredConnector> randomConnectors = AnchoredConnector.anchoredConnectors.OrderBy (x => rand.Next()).ToList();
         foreach (AnchoredConnector connector in randomConnectors) {
-            if (Core.isLocal(connector.block) && connector.inUse != true && connector.isAnchored == true) {
+            if (/**Core.isLocal(connector.block) && */connector.inUse != true && connector.isAnchored == true) {
                 return connector;
             }
         }
@@ -467,7 +479,7 @@ public void Main()
 
 public Program()
 {
-    nodeId = generateRandomId();
+    nodeId = Core.generateRandomId();
     runMainLoop = true;
     Echo("Loading drone, ID: " + nodeId);
     Display.myGrid = this;
@@ -478,9 +490,11 @@ public Program()
     commHandle.setupAntenna();
 
     if (this.validation()) {
+        Echo("Systems online");
         Display.print("Systems online.");
     } else {
         runMainLoop = false;
+        Echo("Drone core missing.");
         Display.print("[Drone] Core is missing!");
     }
 }
@@ -492,7 +506,8 @@ public void initCore(int nodeId) {
     Communication.currentNode.setCommHandle(commHandle);
     Communication.currentNode.initNavigation(this);
     Communication.currentNode.navHandle.updateRemoteControls();
-    coreHandle.setCoreBlock();
+    Communication.currentNode.navHandle.updateThrusters();
+    coreHandle.handleCoreBlock();
     Anchor.initAnchors(this);
     Piston.initPistons(this);
     AnchoredConnector.initConnectors(this);
@@ -506,12 +521,6 @@ public bool validation() {
         return false;
     }
     return true;
-}
-
-public int generateRandomId()
-{
-    Random rnd = new Random();
-    return rnd.Next(1, 10000);
 }
 public class Communication
 {
@@ -719,7 +728,6 @@ public class Communication
             Display.printDebug("[OUT] " + messageOut);
         }
 
-        string[] dataSplitted = messageOut.Split('_');
         this.myGrid.IGC.SendBroadcastMessage(tag1, messageOut);
     }
 
@@ -747,50 +755,66 @@ public class Communication
                 var msg = listens[i].AcceptMessage();
 
                 // Debug log incoming message
-                string[] dataSplitted = msg.Data.ToString().Split('_');
                 if (this.debug == true) {
                     Display.printDebug("[IN] " + msg.Data.ToString());
                 }
 
-                if( msg.Data.ToString().Substring(0, "drone-ping".Length) == "drone-ping" ) {
-                    int id = int.Parse(msg.Data.ToString().Substring("drone-ping".Length + 1));
-                    this.handleResponsePing(id);
-                } else if ( msg.Data.ToString().Substring(0, "drone-generic-data".Length) == "drone-generic-data" ) {
-                    string data = msg.Data.ToString().Substring("drone-generic-data".Length + 1);
-                    this.handleResponseData(data);
-                } else if ( msg.Data.ToString().Substring(0, "drone-docking-request".Length) == "drone-docking-request" ) {
-                    string data = msg.Data.ToString().Substring("drone-docking-request".Length + 1);
-                    this.handleDockingRequest(data);
-                } else if ( msg.Data.ToString().Substring(0, "drone-master-request".Length) == "drone-master-request" ) {
-                    int data = int.Parse(msg.Data.ToString().Substring("drone-master-request".Length + 1));
-                    this.handleMasterRequest(data);
-                } else if ( msg.Data.ToString().Substring(0, "drone-master-accept".Length) == "drone-master-accept" ) {
-                    string data = msg.Data.ToString().Substring("drone-master-accept".Length + 1);
-                    this.handleMasterAcceptance(data);
-                } else if ( msg.Data.ToString().Substring(0, "drone-docking-accept".Length) == "drone-docking-accept" ) {
-                    string data = msg.Data.ToString().Substring("drone-docking-accept".Length + 1);
-                    this.handleDockingAccepted(data);
-                } else if ( msg.Data.ToString().Substring(0, "drone-request-dock-lock".Length) == "drone-request-dock-lock" ) {
-                    string data = msg.Data.ToString().Substring("drone-request-dock-lock".Length + 1);
-                    this.handleDockLockRequest(data);
-                } else if ( msg.Data.ToString().Substring(0, "drone-data-nearby".Length) == "drone-data-nearby" ) {
-                    string data = msg.Data.ToString().Substring("drone-data-nearby".Length);
-                    this.handleDataNearby(this.dataStructure.getFormattedInput(data));
-                } else if ( msg.Data.ToString().Substring(0, "drone-halt-docking".Length) == "drone-halt-docking" ) {
-                    string data = msg.Data.ToString().Substring("drone-halt-docking".Length);
-                    this.handleHaltDocking(this.dataStructure.getFormattedInput(data));
-                } else if ( msg.Data.ToString().Substring(0, "drone-docking-step".Length) == "drone-docking-step" ) {
-                    string data = msg.Data.ToString().Substring("drone-docking-step".Length);
-                    this.handleDockingStep(this.dataStructure.getFormattedInput(data));
-                } else if ( msg.Data.ToString().Substring(0, "drone-connector-data".Length) == "drone-connector-data" ) {
-                    string data = msg.Data.ToString().Substring("drone-connector-data".Length);
-                    this.handleConnectorData(this.dataStructure.getFormattedInput(data));
-                } else if ( msg.Data.ToString().Substring(0, "drone-master-finished".Length) == "drone-master-finished" ) {
-                    string data = msg.Data.ToString().Substring("drone-master-finished".Length);
-                    this.handleMasterFinished(this.dataStructure.getFormattedInput(data));
+                try {
+                    if ( msg.Data.ToString() == "drone-recall_user" ) {
+                       string data = msg.Data.ToString().Substring("drone-recall".Length);
+                       this.handleDroneRecall();
+                    } else if ( msg.Data.ToString() == "drone-release_user" ) {
+                       this.handleDroneRelease();
+                    } else if( msg.Data.ToString().Substring(0, "drone-ping".Length) == "drone-ping" ) {
+                        int id = int.Parse(msg.Data.ToString().Substring("drone-ping".Length + 1));
+                        this.handleResponsePing(id);
+                    } else if ( msg.Data.ToString().Substring(0, "drone-generic-data".Length) == "drone-generic-data" ) {
+                        string data = msg.Data.ToString().Substring("drone-generic-data".Length + 1);
+                        this.handleResponseData(data);
+                    } else if ( msg.Data.ToString().Substring(0, "drone-docking-request".Length) == "drone-docking-request" ) {
+                        string data = msg.Data.ToString().Substring("drone-docking-request".Length + 1);
+                        this.handleDockingRequest(data);
+                    } else if ( msg.Data.ToString().Substring(0, "drone-master-request".Length) == "drone-master-request" ) {
+                        int data = int.Parse(msg.Data.ToString().Substring("drone-master-request".Length + 1));
+                        this.handleMasterRequest(data);
+                    } else if ( msg.Data.ToString().Substring(0, "drone-master-accept".Length) == "drone-master-accept" ) {
+                        string data = msg.Data.ToString().Substring("drone-master-accept".Length + 1);
+                        this.handleMasterAcceptance(data);
+                    } else if ( msg.Data.ToString().Substring(0, "drone-docking-accept".Length) == "drone-docking-accept" ) {
+                        string data = msg.Data.ToString().Substring("drone-docking-accept".Length + 1);
+                        this.handleDockingAccepted(data);
+                    } else if ( msg.Data.ToString().Substring(0, "drone-request-dock-lock".Length) == "drone-request-dock-lock" ) {
+                        string data = msg.Data.ToString().Substring("drone-request-dock-lock".Length + 1);
+                        this.handleDockLockRequest(data);
+                    } else if ( msg.Data.ToString().Substring(0, "drone-data-nearby".Length) == "drone-data-nearby" ) {
+                        string data = msg.Data.ToString().Substring("drone-data-nearby".Length);
+                        this.handleDataNearby(this.dataStructure.getFormattedInput(data));
+                    } else if ( msg.Data.ToString().Substring(0, "drone-halt-docking".Length) == "drone-halt-docking" ) {
+                        string data = msg.Data.ToString().Substring("drone-halt-docking".Length);
+                        this.handleHaltDocking(this.dataStructure.getFormattedInput(data));
+                    } else if ( msg.Data.ToString().Substring(0, "drone-docking-step".Length) == "drone-docking-step" ) {
+                        string data = msg.Data.ToString().Substring("drone-docking-step".Length);
+                        this.handleDockingStep(this.dataStructure.getFormattedInput(data));
+                    } else if ( msg.Data.ToString().Substring(0, "drone-connector-data".Length) == "drone-connector-data" ) {
+                        string data = msg.Data.ToString().Substring("drone-connector-data".Length);
+                        this.handleConnectorData(this.dataStructure.getFormattedInput(data));
+                    } else if ( msg.Data.ToString().Substring(0, "drone-master-finished".Length) == "drone-master-finished" ) {
+                        string data = msg.Data.ToString().Substring("drone-master-finished".Length);
+                        this.handleMasterFinished(this.dataStructure.getFormattedInput(data));
+                    }
+                } catch (Exception e) {
+                    Display.printDebug("[ERROR] Unknown exception in communication system: " + e.Message);
                 }
             }
         }
+    }
+
+    public void handleDroneRelease() {
+        Communication.currentNode.playerCommand = "release";
+    }
+
+    public void handleDroneRecall() {
+        Communication.currentNode.playerCommand = "recall";
     }
 
     public void handleMasterFinished(List<CommunicationDataStructureValue> responseData) {
@@ -895,6 +919,7 @@ public class Communication
             if (procedure != null) {
                 procedure.haltDocking(reason, false);
             }
+            Communication.currentNode.navHandle.activeDockingProcedure = null;
         }
     }
 
@@ -941,9 +966,12 @@ public class Communication
             int slaveId = int.Parse(dataSplitted[2]);
             DockingProcedure procedure = Docking.getDroneDockingProcedure(slaveId);
             if (procedure != null) {
-                Display.printDebug("[INFO] Changing piston state.");
-                procedure.myConnector.piston.setPistonState((bool) (status == 1));
+                if (procedure.myConnector.piston != null) {
+                    Display.printDebug("[INFO] Changing piston state.");
+                    procedure.myConnector.piston.setPistonState((bool) (status == 1));
+                }
                 if (procedure.myConnector != null) {
+                    Display.printDebug("[INFO] Changing connector state.");
                     AnchoredConnector.setConnectorState(procedure.myConnector.connectorId, (bool) (status == 1));
                 }
             } else {
@@ -1241,9 +1269,15 @@ public class Core
     private Vector3D lastPosition = new Vector3D(0,0,0);
     private MyGridProgram myGrid;
     public static IMyProgrammableBlock coreBlock;
+    public static string myShipReference = "";
 
     public Core(MyGridProgram myGrid) {
         this.myGrid = myGrid;
+        if (myGrid.Me == null) {
+            throw new Exception("Unable to find core block.");
+        } else {
+            Core.coreBlock = myGrid.Me;
+        }
     }
 
     public void execute() {
@@ -1251,13 +1285,39 @@ public class Core
         Communication.currentNode.execute();
     }
 
-    public void setCoreBlock() {
-        Core.coreBlock = (IMyProgrammableBlock) this.myGrid.GridTerminalSystem.GetBlockWithName("[Drone] Core");
+    public void handleCoreBlock() {
+        if (Core.coreBlock != null) {
+            List<CustomData> customData = CustomData.getCustomData(Core.coreBlock.CustomData);
+            if (customData.Count > 0) {
+                CustomData shipReference = CustomData.findKeyFromList("shipReference", customData);
+                if (shipReference.value != "") {
+                    Core.myShipReference = shipReference.value;
+                }
+            }
+        }
     }
 
     public static bool isLocal(IMyTerminalBlock block) {
-        if (Core.coreBlock == null) return false;
+        List<CustomData> customData = CustomData.getCustomData(block.CustomData);
+        if (customData.Count > 0) {
+            CustomData shipReference = CustomData.findKeyFromList("shipReference", customData);
+            if (shipReference.value != "") {
+                if (shipReference.value == Core.myShipReference) {
+                    return true;
+                }
+            }
+        }
+
+        if (Core.coreBlock == null) {
+            Display.printDebug("Core block missing. RandomID: " + Core.generateRandomId());
+            return false;
+        }
         return (block.CubeGrid == Core.coreBlock.CubeGrid);
+    }
+
+    public static int generateRandomId() {
+        Random rnd = new Random();
+        return rnd.Next(1, 10000);
     }
 
     public void updateDroneData() {
@@ -1438,7 +1498,6 @@ public class DetectedEntity
 public class Display
 {
     public static List<IMyTextPanel> LCD = new List<IMyTextPanel>();
-    public static List<IMyTextPanel> TextPanels = new List<IMyTextPanel>();
     public static List<IMyCockpit> Cockpits = new List<IMyCockpit>();
     public static MyGridProgram myGrid;
     public static List<string> printQueue = new List<string>();
@@ -1449,8 +1508,16 @@ public class Display
     public static bool debug = true; // @TODO: Should be some kind of config or some shit.
 
     public static void fetchOutputDevices() {
-        Display.myGrid.GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(Display.TextPanels, c => c.BlockDefinition.ToString().ToLower().Contains("text"));
-        Display.myGrid.GridTerminalSystem.GetBlocksOfType<IMyCockpit>(Display.Cockpits, c => c.BlockDefinition.ToString().ToLower().Contains("cockpit"));
+        Display.LCD = new List<IMyTextPanel>();
+        List<IMyTextPanel> handles = new List<IMyTextPanel>();
+        Display.myGrid.GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(handles);
+        if (handles.Count == 0) Display.printDebug("No generic handles for LCD found.");
+        foreach (IMyTextPanel handle in handles) {
+            if (Core.isLocal(handle) && handle.CustomName.Contains("[Drone]")) {
+                Display.LCD.Add(handle);
+            }
+        }
+        if (Display.LCD.Count == 0) Display.printDebug("No local handles for LCD found.");
     }
 
     public static void print(string extraMsg) {
@@ -1467,8 +1534,8 @@ public class Display
 
             // Main info panel
             string msg = Display.generateMessage(string.Join("\n", Display.printQueue));
-            // TextPanels
-            foreach (IMyTextPanel panel in Display.TextPanels) {
+            // LCD
+            foreach (IMyTextPanel panel in Display.LCD) {
                 if (Core.isLocal(panel) && panel.CustomName.Contains("[Drone]") && !panel.CustomName.Contains("[Debug]") && !panel.CustomName.Contains("[Docking]")) {
                     panel.WriteText(msg, false);
                 }
@@ -1476,17 +1543,19 @@ public class Display
 
             // Docking panel
             string dockingMsg = Display.generateDockingMessage(string.Join("\n", Display.dockingPrintQueue));
-            // TextPanels
-            foreach (IMyTextPanel panel in Display.TextPanels) {
+            // LCD
+            foreach (IMyTextPanel panel in Display.LCD) {
                 if (Core.isLocal(panel) && panel.CustomName.Contains("[Drone]") && panel.CustomName.Contains("[Docking]")) {
                     panel.WriteText(dockingMsg, false);
                 }
             }
 
             // Debug data.
-            string debugMsg = Display.generateDebugMessage(string.Join("\n", Display.debugPrintQueue));
-            // TextPanels
-            foreach (IMyTextPanel panel in Display.TextPanels) {
+            List<string> displayDebug = Display.debugPrintQueue;
+            displayDebug.Reverse();
+            string debugMsg = Display.generateDebugMessage(string.Join("\n", displayDebug));
+            // LCD
+            foreach (IMyTextPanel panel in Display.LCD) {
                 if (Core.isLocal(panel) && panel.CustomName.Contains("[Drone]") && panel.CustomName.Contains("[Debug]")) {
                     panel.WriteText(debugMsg, false);
                 }
@@ -1498,13 +1567,22 @@ public class Display
 
             Display.myGrid.Echo(msg);
             Display.printQueue = new List<string>();
-            Display.debugPrintQueue = new List<string>();
+            // Debug should keep recent history.
+            for (int i = 0; i < displayDebug.Count; i++) {
+                if (i > 50) {
+                    displayDebug.RemoveAt(i);
+                }
+            }
+
+            displayDebug.Reverse();
+            Display.debugPrintQueue = displayDebug;
         }
     }
 
     public static string generateDockingMessage(string msg) {
         string message = "";
         message += "=== Docking info ===\n";
+        message += "Player command: " + Communication.currentNode.playerCommand + "\n";
         message += "Anchored connectors: " + AnchoredConnector.anchoredConnectors.Count + "\n";
         foreach (AnchoredConnector connector in AnchoredConnector.anchoredConnectors) {
             message += "--> Connector \t";
@@ -1617,7 +1695,7 @@ public class Docking
 
     public static DockingProcedure getDroneDockingProcedure(int droneId) {
         for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
-            if (Docking.activeDockingProcedures[i].dockingWithDrone == droneId) {
+            if (Docking.activeDockingProcedures[i] != null && Docking.activeDockingProcedures[i].dockingWithDrone == droneId) {
                 return Docking.activeDockingProcedures[i];
             }
         }
@@ -1636,7 +1714,8 @@ public class Docking
     public void clearActiveProcedures() {
         // Remove from active procedure list
         for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
-            if (Docking.activeDockingProcedures[i].dockingInProgress == false) {
+            if (Docking.activeDockingProcedures[i].dockingInProgress == false && Docking.activeDockingProcedures[i].dockingStart - Communication.getTimestamp() > 300) {
+                Docking.activeDockingProcedures[i].haltDocking("mothership-timeout");
                 Docking.activeDockingProcedures.RemoveAt(i);
             }
         }
@@ -1644,26 +1723,43 @@ public class Docking
 
     public void handleDockedStep(DockingProcedure procedure) {
         this.navHandle.gyroHandle.disableOverride();
+        this.navHandle.thrusterStatus(false);
         Communication.currentNode.status = "docked";
         if (Communication.getTimestamp() - procedure.connectionStart > 10) {
-            procedure.haltDocking("docking-timeout");
+            if (Communication.currentNode.battery > 25) { // Do not disengage if battery too low.
+                this.navHandle.thrusterStatus(true);
+                procedure.haltDocking("docking-timeout");
+            }
         }
     }
 
     public void handleFinalStep(DockingProcedure procedure) {
         Communication.currentNode.status = "docking-step-final";
         this.navHandle.setAutopilotStatus(false);
+        this.navHandle.thrusterStatus(false);
         if (procedure.connectionStart > 0) {
             this.handleDockedStep(procedure);
         } else {
             AnchoredConnector connector = procedure.myConnector;
             if (connector != null) {
                 if (connector.block.Status != MyShipConnectorStatus.Connected) {
-                    Vector3D targetPos = this.getDockingPosition(1, procedure);
-                    double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
-                    AnchoredConnector.setConnectorState(connector.connectorId, true);
-                    this.navHandle.commHandle.sendDockingLockRequest(1);
-                    this.navHandle.gyroHandle.rotateShip(2); // Rotate near connector.
+                    if (connector.block.Status == MyShipConnectorStatus.Connectable) {
+                        this.navHandle.gyroHandle.disableOverride();
+                        connector.block.Connect();
+                    } else {
+                        Vector3D targetPos = this.getDockingPosition(1, procedure);
+                        double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
+                        if (distance > 3) {
+                            this.navHandle.setAutopilotStatus(true);
+                            this.navHandle.move(targetPos, "docking-realign");
+                            this.navHandle.setCollisionStatus(false);
+                        } else {
+                            this.navHandle.setAutopilotStatus(false);
+                            AnchoredConnector.setConnectorState(connector.connectorId, true);
+                            this.navHandle.commHandle.sendDockingLockRequest(1);
+                            this.navHandle.gyroHandle.rotateShip(2); // Rotate near connector.
+                        }
+                    }
                 } else if (connector.block.Status == MyShipConnectorStatus.Connected) {
                     procedure.connectionStart = Communication.getTimestamp();
                     Communication.currentNode.status = "docking-step-connected";
@@ -1676,24 +1772,43 @@ public class Docking
     }
 
     public void handleStepOne(DockingProcedure procedure) {
-        Vector3D targetPos = this.getNextDockingPosition(procedure);
+        this.navHandle.thrusterStatus(true);
+        this.navHandle.setAutopilotStatus(true);
+        Vector3D targetPos = this.getDockingPosition(1, procedure);
         Communication.currentNode.status = "docking-step-1";
-        this.navHandle.move(targetPos, "docking-step-1");
-        this.navHandle.setCollisionStatus(false);
-        this.navHandle.gyroHandle.disableOverride();
+        double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
+        if (distance < 3) {
+            Display.printDebug("Next docking step.");
+            procedure.dockingStep--;
+        } else {
+            this.navHandle.move(targetPos, "docking-step-1");
+            this.navHandle.setCollisionStatus(false);
+            this.navHandle.gyroHandle.disableOverride();
+        }
     }
 
     public void handleStepTwo(DockingProcedure procedure) {
+        this.navHandle.thrusterStatus(true);
         Communication.currentNode.status = "docking-step-2";
-        Vector3D targetPos = this.getNextDockingPosition(procedure, 200);
-        this.navHandle.move(targetPos, "docking-step-2");
-        this.navHandle.setCollisionStatus(false);
-        this.navHandle.commHandle.sendDockingLockRequest(0);
-        this.navHandle.gyroHandle.disableOverride();
-
+        Vector3D targetPos = this.getDockingPosition(5, procedure);
+        double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
+        if (distance < 3) {
+            Display.printDebug("Next docking step.");
+            procedure.dockingStep--;
+        } else {
+            this.navHandle.move(targetPos, "docking-step-2");
+            if (distance > 100 && Core.generateRandomId() < 7000) {
+                this.navHandle.setCollisionStatus(false);
+            } else {
+                this.navHandle.setCollisionStatus(true);
+            }
+            this.navHandle.commHandle.sendDockingLockRequest(0);
+            this.navHandle.gyroHandle.disableOverride();
+        }
     }
 
     public void handleStepQueueing(DockingProcedure procedure) {
+        this.navHandle.thrusterStatus(true);
         this.navHandle.gyroHandle.disableOverride();
         if (this.navHandle.commHandle != null) {
             Communication.currentNode.status = "waiting-dock-permissions";
@@ -1713,7 +1828,7 @@ public class Docking
             } else {
                 Vector3D queuePos = this.getQueuePosition();
                 double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), queuePos);
-                if (distance > 50) {
+                if (queuePos.X != 0 && distance > 50) {
                     Communication.currentNode.status = "navigating-to-queue";
                     this.navHandle.move(queuePos, "going-to-queue");
                     this.navHandle.setCollisionStatus(true);
@@ -1745,8 +1860,7 @@ public class Docking
 
     public Vector3D getQueuePosition() {
         if (Communication.masterDrone != null && Communication.masterDrone.position.X != 0) {
-            Vector3D targetPos = Communication.masterDrone.position;
-            targetPos.X += 100; // Offset from ship
+            Vector3D targetPos = this.getMasterPosition(10 * 50);
             return targetPos;
         }
         return new Vector3D(0,0,0);
@@ -1754,26 +1868,10 @@ public class Docking
 
     public Vector3D getDockingPosition(int step, DockingProcedure procedure) {
         if (Communication.masterDrone != null && Communication.masterDrone.connectorAnchorTopPosition.X != null) {
-            Vector3D targetPos = this.getMasterPosition(procedure.dockingStep * 50);
+            Vector3D targetPos = this.getMasterPosition(step * 50);
             return targetPos;
         }
         return new Vector3D(0,0,0);
-    }
-
-    public Vector3D getNextDockingPosition(DockingProcedure procedure, int offset = 0) {
-        // Reset if no joy
-        if (procedure.dockingStep <= 0) {
-            procedure.dockingStep = 2;
-        }
-        Vector3D targetPos = this.getMasterPosition((procedure.dockingStep * 50) + offset);
-        double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
-        if (distance < 2) {
-            procedure.dockingStep--;
-            this.navHandle.commHandle.sendDockingStep(procedure.dockingStep);
-            targetPos = this.getMasterPosition((procedure.dockingStep * 50) + offset);
-        }
-
-        return targetPos;
     }
 
     public double getDistanceFrom(Vector3D pos, Vector3D pos2) {
@@ -1806,6 +1904,7 @@ public class DockingProcedure
     public bool pistonOpen = true;
     public int dockingStep = 2;
     public int queuePos = 0;
+    public int procedureId = 0;
 
     public AnchoredConnector myConnector;
     public Navigation navHandle;
@@ -1820,6 +1919,7 @@ public class DockingProcedure
         this.hasDockingPermission = false;
         this.dockingStep = 2;
         this.queuePos = 0;
+        this.procedureId = Core.generateRandomId();
         this.connectionStart = 0;
         this.dockingStart = Communication.getTimestamp();
         this.myConnector = AnchoredConnector.getAvailableConnector();
@@ -1831,6 +1931,10 @@ public class DockingProcedure
     }
 
     public void haltDocking(string reason = "unknown", bool sendSignal = true) {
+        if (Communication.currentNode.playerCommand == "recall") {
+            Display.printDebug("Cannot halt docking, drones are recalled.");
+            return;
+        }
         Display.printDebug("[INFO] Halting docking, reason: " + reason);
         this.dockingInProgress = false;
         this.hasDockingPermission = false;
@@ -1863,6 +1967,13 @@ public class DockingProcedure
 
         if (Communication.currentNode.navHandle.activeDockingProcedure != null) {
             Communication.currentNode.navHandle.activeDockingProcedure = null;
+        }
+
+        // Remove from active procedure list
+        for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
+            if (Docking.activeDockingProcedures[i] == this) {
+                Docking.activeDockingProcedures.RemoveAt(i);
+            }
         }
     }
 
@@ -1900,7 +2011,6 @@ public class DockingProcedure
 
     public void handleProcedure() {
         if (this.dockingInProgress == true) {
-            // Make sure drone still exists.
             if (this.dockingWithDrone != 0) {
                 int nodeIndex = this.navHandle.commHandle.getNodeIndexById(this.dockingWithDrone);
                 if (nodeIndex == -1) {
@@ -1910,8 +2020,7 @@ public class DockingProcedure
                 this.haltDocking("drone-not-found");
             }
 
-            // Last resort timeout
-            if (Communication.getTimestamp() - this.dockingStart > 300) { // After 5 minutes of docking attempts, you should abandon the drone.
+            if (Communication.getTimestamp() - this.dockingStart > 600 && this.connectionStart == 0) {
                 this.haltDocking("last-resort-timeout");
             }
             if (this.dockingStart != 0 && Communication.getTimestamp() - this.dockingStart > 10) {
@@ -2041,7 +2150,7 @@ public class Navigation
         List<IMyRemoteControl> handles = new List<IMyRemoteControl>();
         this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(handles, c => c.BlockDefinition.ToString().ToLower().Contains("remote"));
         foreach (IMyRemoteControl handle in handles) {
-            if (handle.CustomName.Contains("[Drone]")) {
+            if (Core.isLocal(handle) && handle.CustomName.Contains("[Drone]")) {
                 this.remotes.Add(handle);
             }
         }
@@ -2050,9 +2159,18 @@ public class Navigation
     public void updateThrusters() {
         this.thrusters = new List<IMyThrust>();
         List<IMyThrust> handles = new List<IMyThrust>();
-        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyThrust>(handles, c => c.BlockDefinition.ToString().ToLower().Contains("thruster"));
+        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyThrust>(handles);
         foreach (IMyThrust handle in handles) {
-            this.thrusters.Add(handle);
+            if (Core.isLocal(handle)) {
+                this.thrusters.Add(handle);
+            }
+        }
+    }
+
+    public void thrusterStatus(bool status) {
+        Display.printDebug("Changing thrusters (" + this.thrusters.Count + ") status to: " + status);
+        foreach (IMyThrust thruster in this.thrusters) {
+            thruster.Enabled = status;
         }
     }
 
@@ -2096,6 +2214,10 @@ public class Navigation
             this.clearPath();
             this.lastWaypoint = coords;
             Display.print("Waypoint set: " + waypointName);
+            if (this.remotes.Count == 0) {
+                Display.printDebug("No remotes found.");
+                return;
+            }
             foreach (IMyRemoteControl remote in this.remotes) {
                 remote.AddWaypoint(coords, waypointName);
                 remote.SetAutoPilotEnabled(true);
@@ -2123,13 +2245,8 @@ public class Navigation
     }
 
     public Vector3D getShipPosition() {
-
-        List<IMyRemoteControl> remotes = new List<IMyRemoteControl>();
-        this.myGrid.GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(remotes, c => c.BlockDefinition.ToString().ToLower().Contains("remote"));
-        foreach (IMyRemoteControl remote in remotes) {
-            if (remote.CustomName.Contains("[Drone]")) {
-                return remote.GetPosition();
-            }
+        if (Core.coreBlock != null) {
+            return Core.coreBlock.GetPosition();
         }
         return new Vector3D();
     }
@@ -2214,7 +2331,7 @@ public class Navigation
 
             for (int i = 0; i < this.nearbyEntities.Count; i++) {
                 DetectedEntity nearEntity = this.nearbyEntities[i];
-                if (Communication.getTimestamp() - nearEntity.lastSeen < 300) {
+                if (Communication.getTimestamp() - nearEntity.lastSeen < 7 * 24 * 60 * 60) { // Last seen in 7 days?
                     tmp.Add(nearEntity);
                 }
             }

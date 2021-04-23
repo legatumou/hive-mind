@@ -25,13 +25,20 @@ public class Drone : NodeData
 
     public void handleIdle() {
         double targetDistance = this.navHandle.getDistanceFrom(this.navHandle.getShipPosition(), Communication.masterDrone.position);
-        if (targetDistance > 25000) { // Over 25km
-            this.navHandle.returnToMaster();
+        if (Communication.masterDrone.position.X != 0 && this.navHandle.getShipPosition().X != 0) {
+            if (targetDistance > 25000) { // Over 25km
+                Display.print("Too far, returning to master.");
+                this.navHandle.returnToMaster();
+                return;
+            }
+        } else {
+            Display.print("Missing master info, waiting.");
             return;
         }
         // Find ore
         this.status = "finding-ore";
         Vector3D newPos = Core.coreBlock.GetPosition();
+        this.startDrills();
         // Random position
         Random rnd = new Random();
         newPos.X += (int) rnd.Next(-10000, 10000);
@@ -41,18 +48,17 @@ public class Drone : NodeData
     }
 
     public void mainLogic() {
-        if (this.usedInventorySpace < 95 && this.navHandle.activeDockingProcedure == null) {
+        if (this.usedInventorySpace < 95 && this.navHandle.activeDockingProcedure == null && this.playerCommand != "recall") {
             this.navHandle.setCollisionStatus(false);
+            this.navHandle.thrusterStatus(true);
             DetectedEntity target = this.getTarget();
 
             if (target.id > 0) {
 
                 double targetDistance = this.navHandle.getDistanceFrom(this.navHandle.getShipPosition(), target.position);
-                // @BUG: Keeps moving out of sensor range...
-                // Move to closest ore.
                 Vector3D targetPos = target.position;
                 this.status = "target-acquired-exact";
-                if ((double) target.entityInfo.BoundingBox.Min.X != 0) {
+                if (target.entityInfo.BoundingBox.Min.X != 0 && target.entityInfo.BoundingBox.Min.Y != 0 && target.entityInfo.BoundingBox.Min.Z != 0) {
                     this.status = "target-acquired-box";
                     // Add some random movement.
                     Random rnd = new Random();
@@ -60,31 +66,37 @@ public class Drone : NodeData
                     targetPos.Y = (double) rnd.Next((int) target.entityInfo.BoundingBox.Min.Y, (int) target.entityInfo.BoundingBox.Max.Y);
                     targetPos.Z = (double) rnd.Next((int) target.entityInfo.BoundingBox.Min.Z, (int) target.entityInfo.BoundingBox.Max.Z);
                 }
-                // Execute movement
-                this.navHandle.move(targetPos, "navigate-to-ore");
-                if (targetDistance > 100) {
-                    this.haltDrills();
-                    this.navHandle.setCollisionStatus(true);
+                if (targetPos.X == 0 || targetPos.Y == 0 || targetPos.Z == 0) {
+                    Display.printDebug("Unable to find target GPS.");
                 } else {
-                    this.navHandle.setCollisionStatus(false);
-                    this.startDrills();
+                    Display.printDebug("Setting new drilling destination. (" + Math.Round(targetPos.X, 2) + ", " + Math.Round(targetPos.Y, 2) + ", " + Math.Round(targetPos.Z, 2) + ")");
+                    this.navHandle.move(targetPos, "navigate-to-ore");
+                    if (targetDistance > 500) {
+                        this.haltDrills();
+                        this.navHandle.setCollisionStatus(true);
+                    } else {
+                        this.navHandle.setCollisionStatus(false);
+                        this.startDrills();
+                    }
                 }
 
-                // Add some passive pressure.
                 this.navHandle.overrideThruster("Forward", 10);
             } else {
-                // Add some passive pressure.
+                Display.printDebug("No target found.");
                 this.navHandle.overrideThruster("Forward", 10);
                 this.haltDrills();
                 this.handleIdle();
             }
         } else {
-            if (this.navHandle.activeDockingProcedure != null && this.navHandle.activeDockingProcedure.dockingStep <= 2) {
+            if (this.navHandle.activeDockingProcedure != null && this.navHandle.activeDockingProcedure.dockingStep < 2) {
+                Display.printDebug("Returning to master.");
                 this.haltDrills();
+                this.navHandle.returnToMaster();
             } else {
                 this.startDrills();
+                Display.printDebug("Returning to master.");
+                this.navHandle.returnToMaster();
             }
-            this.navHandle.returnToMaster();
         }
     }
 
@@ -119,6 +131,10 @@ public class Drone : NodeData
                 closest = entity;
                 closestDistance = targetDistance;
             }
+        }
+
+        if (closestDistance > 25000) { // Not too far
+            return new DetectedEntity();
         }
         return closest;
     }

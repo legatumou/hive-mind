@@ -4,9 +4,15 @@ public class Core
     private Vector3D lastPosition = new Vector3D(0,0,0);
     private MyGridProgram myGrid;
     public static IMyProgrammableBlock coreBlock;
+    public static string myShipReference = "";
 
     public Core(MyGridProgram myGrid) {
         this.myGrid = myGrid;
+        if (myGrid.Me == null) {
+            throw new Exception("Unable to find core block.");
+        } else {
+            Core.coreBlock = myGrid.Me;
+        }
     }
 
     public void execute() {
@@ -14,13 +20,39 @@ public class Core
         Communication.currentNode.execute();
     }
 
-    public void setCoreBlock() {
-        Core.coreBlock = (IMyProgrammableBlock) this.myGrid.GridTerminalSystem.GetBlockWithName("[Drone] Core");
+    public void handleCoreBlock() {
+        if (Core.coreBlock != null) {
+            List<CustomData> customData = CustomData.getCustomData(Core.coreBlock.CustomData);
+            if (customData.Count > 0) {
+                CustomData shipReference = CustomData.findKeyFromList("shipReference", customData);
+                if (shipReference.value != "") {
+                    Core.myShipReference = shipReference.value;
+                }
+            }
+        }
     }
 
     public static bool isLocal(IMyTerminalBlock block) {
-        if (Core.coreBlock == null) return false;
+        List<CustomData> customData = CustomData.getCustomData(block.CustomData);
+        if (customData.Count > 0) {
+            CustomData shipReference = CustomData.findKeyFromList("shipReference", customData);
+            if (shipReference.value != "") {
+                if (shipReference.value == Core.myShipReference) {
+                    return true;
+                }
+            }
+        }
+
+        if (Core.coreBlock == null) {
+            Display.printDebug("Core block missing. RandomID: " + Core.generateRandomId());
+            return false;
+        }
         return (block.CubeGrid == Core.coreBlock.CubeGrid);
+    }
+
+    public static int generateRandomId() {
+        Random rnd = new Random();
+        return rnd.Next(1, 10000);
     }
 
     public void updateDroneData() {
