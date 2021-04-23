@@ -64,7 +64,7 @@ public class Docking
         this.navHandle.thrusterStatus(false);
         Communication.currentNode.status = "docked";
         if (Communication.getTimestamp() - procedure.connectionStart > 10) {
-            if (Communication.currentNode.battery > 25) { // Do not disengage if battery too low.
+            if (Communication.currentNode.battery > 25 && Communication.currentNode.playerCommand != "recall") { // Do not disengage if battery too low.
                 this.navHandle.thrusterStatus(true);
                 procedure.haltDocking("docking-timeout");
             }
