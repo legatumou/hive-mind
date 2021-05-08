@@ -110,6 +110,7 @@ public class Communication
         if (procedure != null) {
             AnchoredConnector connector = procedure.myConnector;
             if (connector != null && connector.isAnchored) {
+                procedure.lastConnectorPing = Communication.getTimestamp();
                 Vector3D pos;
                 this.dataStructure.newPackage();
                 this.dataStructure.addRawData("drone-connector-data");
@@ -442,12 +443,12 @@ public class Communication
             int slaveId = int.Parse(dataSplitted[2]);
             DockingProcedure procedure = Docking.getDroneDockingProcedure(slaveId);
             if (procedure != null) {
-                if (procedure.myConnector.piston != null) {
-                    Display.printDebug("[INFO] Changing piston state.");
-                    procedure.myConnector.piston.setPistonState((bool) (status == 1));
-                }
                 if (procedure.myConnector != null) {
-                    Display.printDebug("[INFO] Changing connector state.");
+                    if (procedure.myConnector.piston != null) {
+                        Display.printDebug("[INFO] Changing piston state to " + (bool) (status == 1) + ", ConnectorID: " + procedure.myConnector.connectorId + ".");
+                        procedure.myConnector.piston.setPistonState((bool) (status == 1));
+                    }
+                    Display.printDebug("[INFO] Changing connector state to " + (bool) (status == 1) + ", ConnectorID: " + procedure.myConnector.connectorId + ".");
                     AnchoredConnector.setConnectorState(procedure.myConnector.connectorId, (bool) (status == 1));
                 }
             } else {
@@ -511,8 +512,8 @@ public class Communication
                     Display.print("Assigning a proper connector.");
                     DockingProcedure dock = new DockingProcedure(slaveId);
                     dock.setNavHandle(Communication.currentNode.navHandle);
-                    dock.initDocking();
                     dock.myConnector = available;
+                    dock.initDocking();
                     Docking.activeDockingProcedures.Add(dock);
                     this.sendDockingAccepted(slaveId);
                     this.sendConnectorData(slaveId);

@@ -1,9 +1,8 @@
 
 public class DetectedEntity
 {
-    public DetectedEntity()
-    {
-
+    public DetectedEntity() {
+        this.id = 0;
     }
 
     public long id { get; set; }

@@ -52,9 +52,8 @@ public class Docking
     public void clearActiveProcedures() {
         // Remove from active procedure list
         for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
-            if (Docking.activeDockingProcedures[i].dockingInProgress == false && Docking.activeDockingProcedures[i].dockingStart - Communication.getTimestamp() > 300) {
+            if (Docking.activeDockingProcedures[i].dockingStart == 0 || Docking.activeDockingProcedures[i].dockingStart - Communication.getTimestamp() > 600) {
                 Docking.activeDockingProcedures[i].haltDocking("mothership-timeout");
-                Docking.activeDockingProcedures.RemoveAt(i);
             }
         }
     }
@@ -64,9 +63,13 @@ public class Docking
         this.navHandle.thrusterStatus(false);
         Communication.currentNode.status = "docked";
         if (Communication.getTimestamp() - procedure.connectionStart > 10) {
-            if (Communication.currentNode.battery > 25 && Communication.currentNode.playerCommand != "recall") { // Do not disengage if battery too low.
-                this.navHandle.thrusterStatus(true);
-                procedure.haltDocking("docking-timeout");
+            if (Communication.currentNode.battery > 25) { // Do not disengage if battery too low.
+                if (Communication.currentNode.playerCommand != "recall") {
+                    procedure.haltDocking("docking-timeout");
+                    this.navHandle.thrusterStatus(true);
+                } else {
+                    this.navHandle.thrusterStatus(false);
+                }
             }
         }
     }
@@ -74,7 +77,6 @@ public class Docking
     public void handleFinalStep(DockingProcedure procedure) {
         Communication.currentNode.status = "docking-step-final";
         this.navHandle.setAutopilotStatus(false);
-        this.navHandle.thrusterStatus(false);
         if (procedure.connectionStart > 0) {
             this.handleDockedStep(procedure);
         } else {
@@ -84,6 +86,7 @@ public class Docking
                     if (connector.block.Status == MyShipConnectorStatus.Connectable) {
                         this.navHandle.gyroHandle.disableOverride();
                         connector.block.Connect();
+                        this.navHandle.thrusterStatus(false);
                     } else {
                         Vector3D targetPos = this.getDockingPosition(1, procedure);
                         double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
@@ -98,7 +101,8 @@ public class Docking
                             this.navHandle.gyroHandle.rotateShip(2); // Rotate near connector.
                         }
                     }
-                } else if (connector.block.Status == MyShipConnectorStatus.Connected) {
+                } else {
+                    this.navHandle.thrusterStatus(false);
                     procedure.connectionStart = Communication.getTimestamp();
                     Communication.currentNode.status = "docking-step-connected";
                 }
@@ -120,7 +124,11 @@ public class Docking
             procedure.dockingStep--;
         } else {
             this.navHandle.move(targetPos, "docking-step-1");
-            this.navHandle.setCollisionStatus(false);
+            if (Core.generateRandomPercent(95)) {
+                this.navHandle.setCollisionStatus(false);
+            } else {
+                this.navHandle.setCollisionStatus(true);
+            }
             this.navHandle.gyroHandle.disableOverride();
         }
     }
@@ -140,7 +148,6 @@ public class Docking
             } else {
                 this.navHandle.setCollisionStatus(true);
             }
-            this.navHandle.commHandle.sendDockingLockRequest(0);
             this.navHandle.gyroHandle.disableOverride();
         }
     }

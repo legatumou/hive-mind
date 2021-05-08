@@ -50,6 +50,11 @@ public class Core
         return (block.CubeGrid == Core.coreBlock.CubeGrid);
     }
 
+    public static bool generateRandomPercent(int percent) {
+        Random rnd = new Random();
+        return rnd.Next(1, 100) <= percent;
+    }
+
     public static int generateRandomId() {
         Random rnd = new Random();
         return rnd.Next(1, 10000);

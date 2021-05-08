@@ -33,12 +33,35 @@ public class Drone : NodeData
             }*/
 
 
-            //this.dockingHandle.handleDockingProcedure();
+            this.dockingHandle.handleDockingProcedure();
             this.dockingHandle.clearActiveProcedures();
             this.mainLogic();
             this.lastLoopTime = Communication.getTimestamp();
+            this.broadcastActiveConnectors();
         }
         //this.dockingHandle.handleDockingMechanism();
+    }
+
+    public void broadcastActiveConnectors() {
+        // Remove from active procedure list
+        for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
+            if (Docking.activeDockingProcedures[i].dockingInProgress == true) {
+                if (Docking.activeDockingProcedures[i].lastConnectorPing == 0 || Docking.activeDockingProcedures[i].lastConnectorPing - Communication.getTimestamp() > 15) {
+                    this.commHandle.sendConnectorData(Docking.activeDockingProcedures[i].dockingWithDrone);
+                }
+            }
+        }
+    }
+
+    public void handleIdleConnectors() {
+        for (int i = 0; i < AnchoredConnector.anchoredConnectors.Count; i++) {
+            if (AnchoredConnector.anchoredConnectors[i].inUse == false) {
+                AnchoredConnector.setConnectorState(AnchoredConnector.anchoredConnectors[i].connectorId, false);
+                if (AnchoredConnector.anchoredConnectors[i].piston != null) {
+                    AnchoredConnector.anchoredConnectors[i].piston.setPistonState(false);
+                }
+            }
+        }
     }
 
     public void analyzeInventory() {
@@ -358,7 +381,7 @@ public class AnchoredConnector
         Random rand = new Random();
         List<AnchoredConnector> randomConnectors = AnchoredConnector.anchoredConnectors.OrderBy (x => rand.Next()).ToList();
         foreach (AnchoredConnector connector in randomConnectors) {
-            if (/**Core.isLocal(connector.block) && */connector.inUse != true && connector.isAnchored == true) {
+            if (Core.isLocal(connector.block) && connector.inUse != true && connector.isAnchored == true) {
                 return connector;
             }
         }
@@ -587,6 +610,7 @@ public class Communication
         if (procedure != null) {
             AnchoredConnector connector = procedure.myConnector;
             if (connector != null && connector.isAnchored) {
+                procedure.lastConnectorPing = Communication.getTimestamp();
                 Vector3D pos;
                 this.dataStructure.newPackage();
                 this.dataStructure.addRawData("drone-connector-data");
@@ -919,12 +943,12 @@ public class Communication
             int slaveId = int.Parse(dataSplitted[2]);
             DockingProcedure procedure = Docking.getDroneDockingProcedure(slaveId);
             if (procedure != null) {
-                if (procedure.myConnector.piston != null) {
-                    Display.printDebug("[INFO] Changing piston state.");
-                    procedure.myConnector.piston.setPistonState((bool) (status == 1));
-                }
                 if (procedure.myConnector != null) {
-                    Display.printDebug("[INFO] Changing connector state.");
+                    if (procedure.myConnector.piston != null) {
+                        Display.printDebug("[INFO] Changing piston state to " + (bool) (status == 1) + ", ConnectorID: " + procedure.myConnector.connectorId + ".");
+                        procedure.myConnector.piston.setPistonState((bool) (status == 1));
+                    }
+                    Display.printDebug("[INFO] Changing connector state to " + (bool) (status == 1) + ", ConnectorID: " + procedure.myConnector.connectorId + ".");
                     AnchoredConnector.setConnectorState(procedure.myConnector.connectorId, (bool) (status == 1));
                 }
             } else {
@@ -988,8 +1012,8 @@ public class Communication
                     Display.print("Assigning a proper connector.");
                     DockingProcedure dock = new DockingProcedure(slaveId);
                     dock.setNavHandle(Communication.currentNode.navHandle);
-                    dock.initDocking();
                     dock.myConnector = available;
+                    dock.initDocking();
                     Docking.activeDockingProcedures.Add(dock);
                     this.sendDockingAccepted(slaveId);
                     this.sendConnectorData(slaveId);
@@ -1268,6 +1292,11 @@ public class Core
         return (block.CubeGrid == Core.coreBlock.CubeGrid);
     }
 
+    public static bool generateRandomPercent(int percent) {
+        Random rnd = new Random();
+        return rnd.Next(1, 100) <= percent;
+    }
+
     public static int generateRandomId() {
         Random rnd = new Random();
         return rnd.Next(1, 10000);
@@ -1378,9 +1407,8 @@ public class CustomData
 
 public class DetectedEntity
 {
-    public DetectedEntity()
-    {
-
+    public DetectedEntity() {
+        this.id = 0;
     }
 
     public long id { get; set; }
@@ -1545,7 +1573,16 @@ public class Display
             if (connector.inUse == true) {
                 message += "-> Docking in progress\t";
             }
-            message += "-> Connector isAnchored: " + connector.isAnchored + "\n";
+            message += "\n";
+        }
+        if (Docking.activeDockingProcedures.Count > 0) {
+            message += "=== Docking Procedures ===\n";
+            for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
+                DockingProcedure procedure = Docking.activeDockingProcedures[i];
+                if (procedure.myConnector != null) {
+                    message += " -> DroneID: " + procedure.dockingWithDrone + ", ConnectorID: " + procedure.myConnector.connectorId + "\n";
+                }
+            }
         }
         message += "------------------\n";
         message += msg + "\n";
@@ -1573,7 +1610,9 @@ public class Display
         if (myDrone.type == "mothership") {
             message += "Slaves: " + Communication.slaves.Count + " | \t";
         } else {
-            message += "Space used: " + myDrone.usedInventorySpace + "%\n";
+            if (myDrone.usedInventorySpace >= 0) {
+                message += "Space used: " + myDrone.usedInventorySpace + "%\n";
+            }
             if (Communication.masterDrone != null) {
                 message += "MasterID: " + Communication.masterDrone.id + "\t";
                 if (Communication.masterDrone.masterConnectorId != null) {
@@ -1667,9 +1706,8 @@ public class Docking
     public void clearActiveProcedures() {
         // Remove from active procedure list
         for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
-            if (Docking.activeDockingProcedures[i].dockingInProgress == false && Docking.activeDockingProcedures[i].dockingStart - Communication.getTimestamp() > 300) {
+            if (Docking.activeDockingProcedures[i].dockingStart == 0 || Docking.activeDockingProcedures[i].dockingStart - Communication.getTimestamp() > 600) {
                 Docking.activeDockingProcedures[i].haltDocking("mothership-timeout");
-                Docking.activeDockingProcedures.RemoveAt(i);
             }
         }
     }
@@ -1680,8 +1718,12 @@ public class Docking
         Communication.currentNode.status = "docked";
         if (Communication.getTimestamp() - procedure.connectionStart > 10) {
             if (Communication.currentNode.battery > 25) { // Do not disengage if battery too low.
-                this.navHandle.thrusterStatus(true);
-                procedure.haltDocking("docking-timeout");
+                if (Communication.currentNode.playerCommand != "recall") {
+                    procedure.haltDocking("docking-timeout");
+                    this.navHandle.thrusterStatus(true);
+                } else {
+                    this.navHandle.thrusterStatus(false);
+                }
             }
         }
     }
@@ -1689,7 +1731,6 @@ public class Docking
     public void handleFinalStep(DockingProcedure procedure) {
         Communication.currentNode.status = "docking-step-final";
         this.navHandle.setAutopilotStatus(false);
-        this.navHandle.thrusterStatus(false);
         if (procedure.connectionStart > 0) {
             this.handleDockedStep(procedure);
         } else {
@@ -1699,6 +1740,7 @@ public class Docking
                     if (connector.block.Status == MyShipConnectorStatus.Connectable) {
                         this.navHandle.gyroHandle.disableOverride();
                         connector.block.Connect();
+                        this.navHandle.thrusterStatus(false);
                     } else {
                         Vector3D targetPos = this.getDockingPosition(1, procedure);
                         double distance = this.getDistanceFrom(this.navHandle.getShipPosition(), targetPos);
@@ -1713,7 +1755,8 @@ public class Docking
                             this.navHandle.gyroHandle.rotateShip(2); // Rotate near connector.
                         }
                     }
-                } else if (connector.block.Status == MyShipConnectorStatus.Connected) {
+                } else {
+                    this.navHandle.thrusterStatus(false);
                     procedure.connectionStart = Communication.getTimestamp();
                     Communication.currentNode.status = "docking-step-connected";
                 }
@@ -1735,7 +1778,11 @@ public class Docking
             procedure.dockingStep--;
         } else {
             this.navHandle.move(targetPos, "docking-step-1");
-            this.navHandle.setCollisionStatus(false);
+            if (Core.generateRandomPercent(95)) {
+                this.navHandle.setCollisionStatus(false);
+            } else {
+                this.navHandle.setCollisionStatus(true);
+            }
             this.navHandle.gyroHandle.disableOverride();
         }
     }
@@ -1755,7 +1802,6 @@ public class Docking
             } else {
                 this.navHandle.setCollisionStatus(true);
             }
-            this.navHandle.commHandle.sendDockingLockRequest(0);
             this.navHandle.gyroHandle.disableOverride();
         }
     }
@@ -1854,6 +1900,7 @@ public class DockingProcedure
     public bool enableLock = false;
     public long dockingStart = 0;
     public long connectionStart = 0;
+    public long lastConnectorPing = 0;
     public bool pistonOpen = true;
     public int dockingStep = 2;
     public int queuePos = 0;
@@ -1875,7 +1922,9 @@ public class DockingProcedure
         this.procedureId = Core.generateRandomId();
         this.connectionStart = 0;
         this.dockingStart = Communication.getTimestamp();
-        this.myConnector = AnchoredConnector.getAvailableConnector();
+        if (this.myConnector == null) {
+            this.myConnector = AnchoredConnector.getAvailableConnector();
+        }
         if (this.myConnector != null) {
             AnchoredConnector.setConnectorState(this.myConnector.connectorId, true);
         } else {
@@ -1957,6 +2006,10 @@ public class DockingProcedure
                             }
                         }
                     }
+                }
+            } else {
+                if (this.myConnector.block.Enabled && Communication.currentNode.playerCommand != "recall") {
+                    this.myConnector.block.Enabled = false;
                 }
             }
         }

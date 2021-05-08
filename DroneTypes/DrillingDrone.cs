@@ -53,23 +53,28 @@ public class Drone : NodeData
             this.navHandle.thrusterStatus(true);
             DetectedEntity target = this.getTarget();
 
-            if (target.id > 0) {
-
+            if (target.id != 0 && target.id != null && target.position.X != 0 && target.position != null) {
                 double targetDistance = this.navHandle.getDistanceFrom(this.navHandle.getShipPosition(), target.position);
-                Vector3D targetPos = target.position;
-                this.status = "target-acquired-exact";
-                if (target.entityInfo.BoundingBox.Min.X != 0 && target.entityInfo.BoundingBox.Min.Y != 0 && target.entityInfo.BoundingBox.Min.Z != 0) {
-                    this.status = "target-acquired-box";
-                    // Add some random movement.
-                    Random rnd = new Random();
-                    targetPos.X = (double) rnd.Next((int) target.entityInfo.BoundingBox.Min.X, (int) target.entityInfo.BoundingBox.Max.X);
-                    targetPos.Y = (double) rnd.Next((int) target.entityInfo.BoundingBox.Min.Y, (int) target.entityInfo.BoundingBox.Max.Y);
-                    targetPos.Z = (double) rnd.Next((int) target.entityInfo.BoundingBox.Min.Z, (int) target.entityInfo.BoundingBox.Max.Z);
+                if (targetDistance > 300) {
+                    this.navHandle.setCollisionStatus(true);
                 }
-                if (targetPos.X == 0 || targetPos.Y == 0 || targetPos.Z == 0) {
-                    Display.printDebug("Unable to find target GPS.");
-                } else {
-                    Display.printDebug("Setting new drilling destination. (" + Math.Round(targetPos.X, 2) + ", " + Math.Round(targetPos.Y, 2) + ", " + Math.Round(targetPos.Z, 2) + ")");
+                if (targetDistance > 1) {
+                    Vector3D targetPos = target.position;
+                    if (target.entityInfo.BoundingBox.Min.X != 0 && target.entityInfo.BoundingBox.Min.Y != 0 && target.entityInfo.BoundingBox.Min.Z != 0) {
+                        this.status = "target-acquired-box";
+                        // Add some random movement.
+                        Random rnd = new Random();
+                        targetPos.X = (double) rnd.Next((int) target.entityInfo.BoundingBox.Min.X, (int) target.entityInfo.BoundingBox.Max.X);
+                        targetPos.Y = (double) rnd.Next((int) target.entityInfo.BoundingBox.Min.Y, (int) target.entityInfo.BoundingBox.Max.Y);
+                        targetPos.Z = (double) rnd.Next((int) target.entityInfo.BoundingBox.Min.Z, (int) target.entityInfo.BoundingBox.Max.Z);
+                    } else {
+                        this.status = "target-acquired-relative";
+                        Display.printDebug("Setting new drilling destination based on coordinates. (" + Math.Round(targetPos.X, 2) + ", " + Math.Round(targetPos.Y, 2) + ", " + Math.Round(targetPos.Z, 2) + ")");
+                        Random rnd = new Random();
+                        targetPos.X += (double) rnd.Next((int) -300, (int) 300);
+                        targetPos.Y += (double) rnd.Next((int) -300, (int) 300);
+                        targetPos.Z += (double) rnd.Next((int) -300, (int) 300);
+                    }
                     this.navHandle.move(targetPos, "navigate-to-ore");
                     if (targetDistance > 500) {
                         this.haltDrills();
@@ -78,9 +83,11 @@ public class Drone : NodeData
                         this.navHandle.setCollisionStatus(false);
                         this.startDrills();
                     }
-                }
 
-                this.navHandle.overrideThruster("Forward", 10);
+                    this.navHandle.overrideThruster("Forward", 10);
+                } else {
+                    Display.printDebug("Already at target destination.");
+                }
             } else {
                 Display.printDebug("No target found.");
                 this.navHandle.overrideThruster("Forward", 10);
@@ -127,6 +134,7 @@ public class Drone : NodeData
             // Filter out non asteroids.
             if (!targetList.Any(entity.name.Contains)) continue;
             targetDistance = this.navHandle.getDistanceFrom(this.navHandle.getShipPosition(), entity.position);
+            if (targetDistance > 50000 || targetDistance < 0) continue; // Out of antenna range or irregular distance.
             if (targetDistance < closestDistance) {
                 closest = entity;
                 closestDistance = targetDistance;

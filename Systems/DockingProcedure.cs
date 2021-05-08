@@ -8,6 +8,7 @@ public class DockingProcedure
     public bool enableLock = false;
     public long dockingStart = 0;
     public long connectionStart = 0;
+    public long lastConnectorPing = 0;
     public bool pistonOpen = true;
     public int dockingStep = 2;
     public int queuePos = 0;
@@ -29,7 +30,9 @@ public class DockingProcedure
         this.procedureId = Core.generateRandomId();
         this.connectionStart = 0;
         this.dockingStart = Communication.getTimestamp();
-        this.myConnector = AnchoredConnector.getAvailableConnector();
+        if (this.myConnector == null) {
+            this.myConnector = AnchoredConnector.getAvailableConnector();
+        }
         if (this.myConnector != null) {
             AnchoredConnector.setConnectorState(this.myConnector.connectorId, true);
         } else {
@@ -111,6 +114,10 @@ public class DockingProcedure
                             }
                         }
                     }
+                }
+            } else {
+                if (this.myConnector.block.Enabled && Communication.currentNode.playerCommand != "recall") {
+                    this.myConnector.block.Enabled = false;
                 }
             }
         }

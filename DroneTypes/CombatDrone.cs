@@ -5,6 +5,8 @@ public class Drone : NodeData
 
     public void initiate() {
         this.type = "combat";
+        this.navHandle.setCollisionStatus(true);
+        this.navHandle.setAutopilotStatus(true);
     }
 
     public void handleIdle() {
@@ -16,10 +18,6 @@ public class Drone : NodeData
                 double distance = this.navHandle.getDistanceFrom(this.navHandle.getShipPosition(), Communication.masterDrone.position);
                 if (distance > 500) {
                     this.status = "moving-to-master";
-                    Random rand = new Random();
-                    newPos.X += rand.Next(50, 200); // Offset from ship
-                    newPos.Y += rand.Next(50, 200); // Offset from ship
-                    newPos.Z += rand.Next(50, 200); // Offset from ship
                     this.navHandle.move(newPos, "running-to-friend");
                 } else {
                     this.status = "waiting-for-enemies";
@@ -31,7 +29,7 @@ public class Drone : NodeData
     }
 
     public Vector3D getIdlePosition() {
-        if (Communication.masterDrone != null) {
+        if (Communication.masterDrone != null && Communication.masterDrone.position.X != 0) {
             Vector3D targetPos = Communication.masterDrone.position;
             Random rand = new Random();
             targetPos.X += rand.Next(-500, 500); // Offset from ship

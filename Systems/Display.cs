@@ -96,7 +96,16 @@ public class Display
             if (connector.inUse == true) {
                 message += "-> Docking in progress\t";
             }
-            message += "-> Connector isAnchored: " + connector.isAnchored + "\n";
+            message += "\n";
+        }
+        if (Docking.activeDockingProcedures.Count > 0) {
+            message += "=== Docking Procedures ===\n";
+            for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
+                DockingProcedure procedure = Docking.activeDockingProcedures[i];
+                if (procedure.myConnector != null) {
+                    message += " -> DroneID: " + procedure.dockingWithDrone + ", ConnectorID: " + procedure.myConnector.connectorId + "\n";
+                }
+            }
         }
         message += "------------------\n";
         message += msg + "\n";
@@ -124,7 +133,9 @@ public class Display
         if (myDrone.type == "mothership") {
             message += "Slaves: " + Communication.slaves.Count + " | \t";
         } else {
-            message += "Space used: " + myDrone.usedInventorySpace + "%\n";
+            if (myDrone.usedInventorySpace >= 0) {
+                message += "Space used: " + myDrone.usedInventorySpace + "%\n";
+            }
             if (Communication.masterDrone != null) {
                 message += "MasterID: " + Communication.masterDrone.id + "\t";
                 if (Communication.masterDrone.masterConnectorId != null) {

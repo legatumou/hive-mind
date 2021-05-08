@@ -33,12 +33,35 @@ public class Drone : NodeData
             }*/
 
 
-            //this.dockingHandle.handleDockingProcedure();
+            this.dockingHandle.handleDockingProcedure();
             this.dockingHandle.clearActiveProcedures();
             this.mainLogic();
             this.lastLoopTime = Communication.getTimestamp();
+            this.broadcastActiveConnectors();
         }
         //this.dockingHandle.handleDockingMechanism();
+    }
+
+    public void broadcastActiveConnectors() {
+        // Remove from active procedure list
+        for (int i = 0; i < Docking.activeDockingProcedures.Count; i++) {
+            if (Docking.activeDockingProcedures[i].dockingInProgress == true) {
+                if (Docking.activeDockingProcedures[i].lastConnectorPing == 0 || Docking.activeDockingProcedures[i].lastConnectorPing - Communication.getTimestamp() > 15) {
+                    this.commHandle.sendConnectorData(Docking.activeDockingProcedures[i].dockingWithDrone);
+                }
+            }
+        }
+    }
+
+    public void handleIdleConnectors() {
+        for (int i = 0; i < AnchoredConnector.anchoredConnectors.Count; i++) {
+            if (AnchoredConnector.anchoredConnectors[i].inUse == false) {
+                AnchoredConnector.setConnectorState(AnchoredConnector.anchoredConnectors[i].connectorId, false);
+                if (AnchoredConnector.anchoredConnectors[i].piston != null) {
+                    AnchoredConnector.anchoredConnectors[i].piston.setPistonState(false);
+                }
+            }
+        }
     }
 
     public void analyzeInventory() {
